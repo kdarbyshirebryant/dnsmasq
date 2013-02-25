@@ -128,6 +128,10 @@ struct myoption {
 #define LOPT_AUTHSFS   317
 #define LOPT_AUTHPEER  318
 
+#ifdef HAVE_TOMATO
+#define LOPT_QUIET_DHCP 319
+#endif //TOMATO
+
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
 #else
@@ -245,6 +249,9 @@ static const struct myoption opts[] =
     { "rebind-localhost-ok", 0, 0,  LOPT_LOC_REBND },
     { "add-mac", 0, 0, LOPT_ADD_MAC },
     { "proxy-dnssec", 0, 0, LOPT_DNSSEC },
+#ifdef HAVE_TOMATO
+    { "quiet-dhcp", 0, 0, LOPT_QUIET_DHCP },
+#endif //TOMATO
     { "dhcp-sequential-ip", 0, 0,  LOPT_INCR_ADDR },
     { "conntrack", 0, 0, LOPT_CONNTRACK },
     { "dhcp-client-update", 0, 0, LOPT_FQDN },
@@ -383,6 +390,11 @@ static struct {
   { LOPT_TEST, 0, NULL, gettext_noop("Check configuration syntax."), NULL },
   { LOPT_ADD_MAC, OPT_ADD_MAC, NULL, gettext_noop("Add requestor's MAC address to forwarded DNS queries."), NULL },
   { LOPT_DNSSEC, OPT_DNSSEC, NULL, gettext_noop("Proxy DNSSEC validation results from upstream nameservers."), NULL },
+
+#ifdef HAVE_TOMATO
+  { LOPT_QUIET_DHCP, OPT_QUIET_DHCP, NULL, gettext_noop("Do not log DHCP packets."), NULL },
+#endif //TOMATO
+
   { LOPT_INCR_ADDR, OPT_CONSEC_ADDR, NULL, gettext_noop("Attempt to allocate sequential IP addresses to DHCP clients."), NULL },
   { LOPT_CONNTRACK, OPT_CONNTRACK, NULL, gettext_noop("Copy connection-track mark from queries to upstream connections."), NULL },
   { LOPT_FQDN, OPT_FQDN_UPDATE, NULL, gettext_noop("Allow DHCP clients to do their own DDNS updates."), NULL },
