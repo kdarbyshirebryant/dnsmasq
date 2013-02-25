@@ -393,6 +393,9 @@ static char *compile_opts =
 "no-"
 #endif
 "ipset "
+#ifdef HAVE_TOMATO
+  "Tomato-helper "
+#endif
 #ifndef HAVE_AUTH
 "no-"
 #endif
