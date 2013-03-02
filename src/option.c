@@ -130,7 +130,7 @@ struct myoption {
 #define LOPT_IPSET     319
 
 #ifdef HAVE_TOMATO
-#define LOPT_QUIET_DHCP 319
+#define LOPT_QUIET_DHCP 320
 #endif //TOMATO
 
 #ifdef HAVE_GETOPT_LONG
