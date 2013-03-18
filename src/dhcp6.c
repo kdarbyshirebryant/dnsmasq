@@ -120,11 +120,11 @@ void dhcp6_packet(time_t now)
     return;
     
   for (tmp = daemon->if_except; tmp; tmp = tmp->next)
-    if (tmp->name && (strcmp(tmp->name, ifr.ifr_name) == 0))
+    if (tmp->name && wildcard_match(tmp->name, ifr.ifr_name))
       return;
 
   for (tmp = daemon->dhcp_except; tmp; tmp = tmp->next)
-    if (tmp->name && (strcmp(tmp->name, ifr.ifr_name) == 0))
+    if (tmp->name && wildcard_match(tmp->name, ifr.ifr_name))
       return;
  
   parm.current = NULL;
@@ -153,7 +153,7 @@ void dhcp6_packet(time_t now)
     {
       
       for (tmp = daemon->if_names; tmp; tmp = tmp->next)
-	if (tmp->name && (strcmp(tmp->name, ifr.ifr_name) == 0))
+	if (tmp->name && wildcard_match(tmp->name, ifr.ifr_name))
 	  break;
 
       if (!tmp && !parm.addr_match)
@@ -371,31 +371,38 @@ struct dhcp_context *address6_valid(struct dhcp_context *context,
   return NULL;
 }
 
-static int is_config_in_context6(struct dhcp_context *context, struct dhcp_config *config)
+int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr)
 {
-  /* expand wildcard on contructed contexts */
-  if ((config->flags & CONFIG_WILDCARD) && 
-      (context->flags & CONTEXT_CONSTRUCTED))
+  if (!config || !(config->flags & CONFIG_ADDR6))
+    return 0;
+
+  if ((config->flags & CONFIG_WILDCARD) && context->prefix == 64)
     {
-      u64 addrpart = addr6part(&config->addr6);
-      config->addr6 = context->start6;
-      setaddr6part(&config->addr6, addrpart);
+      *addr = context->start6;
+      setaddr6part(addr, addr6part(&config->addr6));
       return 1;
     }
   
-  if (!(config->flags & CONFIG_ADDR6) || is_addr_in_context6(context, &config->addr6))
-    return 1;
-      
+  if (is_same_net6(&context->start6, &config->addr6, context->prefix))
+    {
+      *addr = config->addr6;
+      return 1;
+    }
+  
   return 0;
 }
 
-
-int is_addr_in_context6(struct dhcp_context *context, struct in6_addr *addr)
+static int is_config_in_context6(struct dhcp_context *context, struct dhcp_config *config)
 {
-  for (; context; context = context->current)
-    if (is_same_net6(addr, &context->start6, context->prefix))
-      return 1;
+  if (!(config->flags & CONFIG_ADDR6) || 
+      (config->flags & CONFIG_WILDCARD))
+
+    return 1;
   
+  for (; context; context = context->current)
+    if (is_same_net6(&config->addr6, &context->start6, context->prefix))
+      return 1;
+      
   return 0;
 }
 
@@ -523,9 +530,7 @@ static int construct_worker(struct in6_addr *local, int prefix,
 	  }
 	
       }
-    else if (addr6part(local) == addr6part(&template->start6) &&
-	     strncmp(template->template_interface, ifrn_name, strlen(template->template_interface)) == 0 &&
-	     (strlen(template->template_interface) == strlen(ifrn_name) || (template->flags & CONTEXT_WILDCARD)))
+    else if (addr6part(local) == addr6part(&template->start6) && wildcard_match(template->template_interface, ifrn_name))
       {
 	start6 = *local;
 	setaddr6part(&start6, addr6part(&template->start6));

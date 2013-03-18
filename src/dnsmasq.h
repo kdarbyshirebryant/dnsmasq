@@ -728,7 +728,7 @@ struct dhcp_context {
 #define CONTEXT_CONSTRUCTED 2048
 #define CONTEXT_GC          4096
 #define CONTEXT_RA          8192
-#define CONTEXT_WILDCARD   16384
+#define CONTEXT_CONF_USED  16384
 #define CONTEXT_USED       32768
 
 struct ping_result {
@@ -986,6 +986,8 @@ char *print_mac(char *buff, unsigned char *mac, int len);
 void bump_maxfd(int fd, int *max);
 int read_write(int fd, unsigned char *packet, int size, int rw);
 
+int wildcard_match(const char* wildcard, const char* match);
+
 /* log.c */
 void die(char *message, char *arg1, int exit_code);
 int log_start(struct passwd *ent_pw, int errfd);
@@ -1182,7 +1184,7 @@ void dhcp6_init(void);
 void dhcp6_packet(time_t now);
 struct dhcp_context *address6_allocate(struct dhcp_context *context,  unsigned char *clid, int clid_len, 
 				       int iaid, int serial, struct dhcp_netid *netids, int plain_range, struct in6_addr *ans);
-int is_addr_in_context6(struct dhcp_context *context, struct in6_addr *addr);
+int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr);
 struct dhcp_context *address6_available(struct dhcp_context *context, 
 					struct in6_addr *taddr,
 					struct dhcp_netid *netids,
