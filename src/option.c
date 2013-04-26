@@ -128,8 +128,9 @@ struct myoption {
 #define LOPT_AUTHSFS   317
 #define LOPT_AUTHPEER  318
 #define LOPT_IPSET     319
+#define LOPT_SYNTH     320
 #ifdef OPTION6_PREFIX_CLASS 
-#define LOPT_PREF_CLSS 320
+#define LOPT_PREF_CLSS 321
 #endif
 
 #ifdef HAVE_TOMATO
@@ -271,6 +272,7 @@ static const struct myoption opts[] =
     { "auth-sec-servers", 1, 0, LOPT_AUTHSFS },
     { "auth-peer", 1, 0, LOPT_AUTHPEER }, 
     { "ipset", 1, 0, LOPT_IPSET },
+    { "synth-domain", 1, 0, LOPT_SYNTH },
 #ifdef OPTION6_PREFIX_CLASS 
     { "dhcp-prefix-class", 1, 0, LOPT_PREF_CLSS },
 #endif
@@ -418,6 +420,7 @@ static struct {
   { LOPT_AUTHSFS, ARG_DUP, "<NS>[,<NS>...]", gettext_noop("Secondary authoritative nameservers for forward domains"), NULL },
   { LOPT_AUTHPEER, ARG_DUP, "<ipaddr>[,<ipaddr>...]", gettext_noop("Peers which are allowed to do zone transfer"), NULL },
   { LOPT_IPSET, ARG_DUP, "/<domain>/<ipset>[,<ipset>...]", gettext_noop("Specify ipsets to which matching domains should be added"), NULL },
+  { LOPT_SYNTH, ARG_DUP, "<domain>,<range>,[<prefix>]", gettext_noop("Specify a domain and address range for sythesised names"), NULL },
 #ifdef OPTION6_PREFIX_CLASS 
   { LOPT_PREF_CLSS, ARG_DUP, "set:tag,<class>", gettext_noop("Specify DHCPv6 prefix class"), NULL },
 #endif
@@ -1699,7 +1702,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
       break;
 
-    case 's': /* --domain */
+    case 's':         /* --domain */
+    case LOPT_SYNTH:  /* --synth-domain */
       if (strcmp (arg, "#") == 0)
 	set_option_bool(OPT_RESOLV_DOMAIN);
       else
@@ -1714,6 +1718,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		{
 		  struct cond_domain *new = opt_malloc(sizeof(struct cond_domain));
 		  char *netpart;
+		  
+		  new->prefix = NULL;
 
 		  unhide_metas(comma);
 		  if ((netpart = split_chr(comma, '/')))
@@ -1731,25 +1737,30 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			  new->end.s_addr = new->start.s_addr | htonl(mask);
 			  if (arg)
 			    {
-			      /* generate the equivalent of
-				 local=/<domain>/
-				 local=/xxx.yyy.zzz.in-addr.arpa/ */
-
-			      if (strcmp(arg, "local") != 0 || 
-				  (msize != 8 && msize != 16 && msize != 24))
+			      if (option != 's')
+				{
+				  if (!(new->prefix = canonicalise_opt(arg)) ||
+				      strlen(new->prefix) > MAXLABEL - INET_ADDRSTRLEN)
+				    ret_err(_("bad prefix"));
+				}
+			      else if (strcmp(arg, "local") != 0 ||
+				       (msize != 8 && msize != 16 && msize != 24))
 				ret_err(gen_err);
 			      else
 				{
+				  /* generate the equivalent of
+				     local=/<domain>/
+				     local=/xxx.yyy.zzz.in-addr.arpa/ */
 				  struct server *serv = opt_malloc(sizeof(struct server));
 				  in_addr_t a = ntohl(new->start.s_addr) >> 8;
 				  char *p;
-
+				  
 				  memset(serv, 0, sizeof(struct server));
 				  serv->domain = d;
 				  serv->flags = SERV_HAS_DOMAIN | SERV_NO_ADDR;
 				  serv->next = daemon->servers;
 				  daemon->servers = serv;
-
+				  
 				  serv = opt_malloc(sizeof(struct server));
 				  memset(serv, 0, sizeof(struct server));
 				  p = serv->domain = opt_malloc(25); /* strlen("xxx.yyy.zzz.in-addr.arpa")+1 */
@@ -1761,7 +1772,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				    p += sprintf(p, "%d.", a & 0xff);
 				  a = a >> 8;
 				  p += sprintf(p, "%d.in-addr.arpa", a & 0xff);
-
+				  
 				  serv->flags = SERV_HAS_DOMAIN | SERV_NO_ADDR;
 				  serv->next = daemon->servers;
 				  daemon->servers = serv;
@@ -1774,11 +1785,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			  u64 mask = (1LLU << (128 - msize)) - 1LLU;
 			  u64 addrpart = addr6part(&new->start6);
 			  new->is6 = 1;
-
+			  
 			  /* prefix==64 overflows the mask calculation above */
 			  if (msize == 64)
 			    mask = (u64)-1LL;
-
+			  
 			  new->end6 = new->start6;
 			  setaddr6part(&new->start6, addrpart & ~mask);
 			  setaddr6part(&new->end6, addrpart | mask);
@@ -1787,14 +1798,19 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			    ret_err(gen_err);
 			  else if (arg)
 			    {
-			      /* generate the equivalent of
-				 local=/<domain>/
-				 local=/xxx.yyy.zzz.ip6.arpa/ */
-
-			      if (strcmp(arg, "local") != 0 || ((msize & 4) != 0))
+			      if (option != 's')
+				{
+				  if (!(new->prefix = canonicalise_opt(arg)) ||
+				      strlen(new->prefix) > MAXLABEL - INET6_ADDRSTRLEN)
+				    ret_err(_("bad prefix"));
+				}	
+			      else if (strcmp(arg, "local") != 0 || ((msize & 4) != 0))
 				ret_err(gen_err);
 			      else 
 				{
+				  /* generate the equivalent of
+				     local=/<domain>/
+				     local=/xxx.yyy.zzz.ip6.arpa/ */
 				  struct server *serv = opt_malloc(sizeof(struct server));
 				  char *p;
 				  
@@ -1825,7 +1841,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		      else
 			ret_err(gen_err);
 		    }
-		  else 
+		  else  
 		    {
 		      arg = split(comma);
 		      if (inet_pton(AF_INET, comma, &new->start))
@@ -1851,11 +1867,21 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		    }
 
 		  new->domain = d;
-		  new->next = daemon->cond_domain;
-		  daemon->cond_domain = new;		     
+		  if (option  == 's')
+		    {
+		      new->next = daemon->cond_domain;
+		      daemon->cond_domain = new;
+		    }
+		  else
+		    {
+		      new->next = daemon->synth_domains;
+		      daemon->synth_domains = new;
+		    }
 		}
-	      else
+	      else if (option == 's')
 		daemon->domain_suffix = d;
+	      else 
+		ret_err(gen_err);
 	    }
 	}
       break;
