@@ -134,7 +134,7 @@ struct myoption {
 #endif
 
 #ifdef HAVE_TOMATO
-#define LOPT_QUIET_DHCP 321
+#define LOPT_QUIET_DHCP 322
 #endif //TOMATO
 
 #ifdef HAVE_GETOPT_LONG
