@@ -32,13 +32,6 @@ static void fatal_event(struct event_desc *ev, char *msg);
 static int read_event(int fd, struct event_desc *evp, char **msg);
 
 
-#ifdef HAVE_TOMATO
-
-void tomato_helper(time_t now);
-void flush_lease_file(time_t now);
-
-#endif //TOMATO
-
 int main (int argc, char **argv)
 {
   int bind_fallback = 0;

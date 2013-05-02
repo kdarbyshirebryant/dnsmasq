@@ -1121,6 +1121,10 @@ unsigned char *extended_hwaddr(int hwtype, int hwlen, unsigned char *hwaddr,
 int make_icmp_sock(void);
 int icmp_ping(struct in_addr addr);
 #endif
+#ifdef HAVE_TOMATO
+void tomato_helper(time_t now);
+void flush_lease_file(time_t now);
+#endif //TOMATO
 void send_alarm(time_t event, time_t now);
 void send_event(int fd, int event, int data, char *msg);
 void clear_cache_and_reload(time_t now);
