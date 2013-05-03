@@ -1172,7 +1172,7 @@ static void async_event(int pipe, time_t now)
    assuming the file will be complete by the time they come to parse it.
    Race conditions anyone?  What if dnsmasq happens to be updating the
    file anyway? */
-if defined(HAVE_DHCP) && defined(HAVE_LEASEFILE_EXPIRE) && !defined(HAVE_TOMATO)
+#if defined(HAVE_DHCP) && defined(HAVE_LEASEFILE_EXPIRE) && !defined(HAVE_TOMATO)
 	if (daemon->dhcp || daemon->dhcp6)
 		flush_lease_file(now);
 #endif
@@ -1200,7 +1200,7 @@ if defined(HAVE_DHCP) && defined(HAVE_LEASEFILE_EXPIRE) && !defined(HAVE_TOMATO)
 
 //Originally TOMATO tweak
 #if defined(HAVE_DHCP) && defined(HAVE_LEASEFILE_EXPIRE)
-	if (daemon->dhcp || deamon->dhcp6)
+	if (daemon->dhcp || daemon->dhcp6)
 		flush_lease_file(now);
 #endif
 	

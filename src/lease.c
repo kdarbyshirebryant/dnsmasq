@@ -1162,7 +1162,7 @@ void flush_lease_file(time_t now)
 	lease_update_file(now);
 
 	if (file_dirty == 0)
-		flust_time = now;
+		flush_time = now;
 }
 #endif //HAVE_LEASEFILE_EXPIRE
 
