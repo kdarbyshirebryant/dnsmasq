@@ -224,7 +224,9 @@ struct event_desc {
 
 #ifdef HAVE_QUIET_DHCP	//Originally a TOMATO option
   #define OPT_QUIET_DHCP 41
-  #define OPT_LAST	42
+  #define OPT_QUIET_DHCP6 42
+  #define OPT_QUIET_RA	 43
+  #define OPT_LAST	44
 #else 
   #define OPT_LAST	41
 #endif //HAVE_QUIET_DHCP
