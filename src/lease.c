@@ -139,7 +139,7 @@ void lease_init(time_t now)
 	  lease->expires = (time_t)ei + now;
 	else
 	  lease->expires = (time_t)0;
-#ifdef HAVE_BROKEN_RT
+#ifdef HAVE_BROKEN_RTC
 	lease->length = ei;
 #endif
 #else
@@ -1156,14 +1156,19 @@ void tomato_helper(time_t now)
 		unlink("/var/tmp/dhcp/delete");
 	}
 
-	// dump the leases file
+	// dump the leases file incl dhcpv6
 	if ((f = fopen("/var/tmp/dhcp/leases.!", "w")) != NULL) {
 		for (lease = leases; lease; lease = lease->next) {
 			if (lease->hwaddr_type == ARPHRD_ETHER) {
-				fprintf(f, "%lu %02X:%02X:%02X:%02X:%02X:%02X %s %s\n",
+                           if (lease->flags & (LEASE_TA | LEASE_NA))
+	                        inet_ntop(AF_INET6, &lease->addr6, buf, ADDRSTRLEN);
+			   else
+	                        inet_ntop(AF_INET, &lease->addr, buf, ADDRSTRLEN);
+
+			fprintf(f, "%lu %02X:%02X:%02X:%02X:%02X:%02X %s %s\n",
 					lease->expires - now,
 					lease->hwaddr[0], lease->hwaddr[1], lease->hwaddr[2], lease->hwaddr[3], lease->hwaddr[4], lease->hwaddr[5],
-					inet_ntoa(lease->addr),
+					buf,
 					((lease->hostname) && (strlen(lease->hostname) > 0)) ? lease->hostname : "*");
 			}
 		}
