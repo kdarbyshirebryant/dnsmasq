@@ -336,7 +336,6 @@ HAVE_SOCKADDR_SA_LEN
 
 #ifdef HAVE_TOMATO
 #define HAVE_LEASEFILE_EXPIRE
-#define HAVE_QUIET_DHCP
 #endif
 
 /* Define a string indicating which options are in use.

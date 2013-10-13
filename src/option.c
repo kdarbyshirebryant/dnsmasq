@@ -140,12 +140,6 @@ struct myoption {
 #define LOPT_QUIET_RA     328
 
 
-#ifdef HAVE_QUIET_DHCP //Originally TOMATO option
-#define LOPT_QUIET_DHCP 324
-#define LOPT_QUIET_DHCP6 325
-#define LOPT_QUIET_RA 326
-#endif
-
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
 #else

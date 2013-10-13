@@ -801,9 +801,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	    put_opt6_short(DHCP6NOADDRS);
 	    put_opt6_string(_("no addresses available"));
 	    end_opt6(o1);
-#ifdef HAVE_QUIET_DHCP
-  if (!option_bool(OPT_QUIET_DHCP6))
-#endif
 	    log6_packet(state, "DHCPADVERTISE", NULL, _("no addresses available"));
 	  }
 
@@ -919,9 +916,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	    put_opt6_short(DHCP6NOADDRS);
 	    put_opt6_string(_("no addresses available"));
 	    end_opt6(o1);
-#ifdef HAVE_QUIET_DHCP
-  if (!option_bool(OPT_QUIET_DHCP6))
-#endif
 	    log6_packet(state, "DHCPREPLY", NULL, _("no addresses available"));
 	  }
 
@@ -968,9 +962,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		    save_counter(iacntr);
 		    t1cntr = 0;
 		    
-#ifdef HAVE_QUIET_DHCP
-  if (!option_bool(OPT_QUIET_DHCP6))
-#endif
 		    log6_packet(state, "DHCPREPLY", req_addr, _("lease not found"));
 		    
 		    o1 = new_opt6(OPTION6_STATUS_CODE);
