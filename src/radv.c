@@ -434,7 +434,7 @@ static int add_prefixes(struct in6_addr *local,  int prefix,
 	  
 	  for (context = daemon->dhcp6; context; context = context->next)
 	    if (!(context->flags & (CONTEXT_TEMPLATE | CONTEXT_OLD)) &&
-		prefix == context->prefix &&
+		prefix <= context->prefix && //KDB
 		is_same_net6(local, &context->start6, prefix) &&
 		is_same_net6(local, &context->end6, prefix))
 	      {
@@ -491,7 +491,7 @@ static int add_prefixes(struct in6_addr *local,  int prefix,
 		    if (!param->first)
 		      context->ra_time = 0;
 		    context->flags |= CONTEXT_RA_DONE;
-		    do_prefix = 1;
+		    do_prefix = context->prefix; //KDB
 		  }
 
 		param->first = 0;	
@@ -524,6 +524,8 @@ static int add_prefixes(struct in6_addr *local,  int prefix,
 	     	      
 	      if ((opt = expand(sizeof(struct prefix_opt))))
 		{
+                  prefix = do_prefix; //KDB
+
 		  /* zero net part of address */
 		  setaddr6part(local, addr6part(local) & ~((prefix == 64) ? (u64)-1LL : (1LLU << (128 - prefix)) - 1LLU));
 		  
@@ -640,7 +642,7 @@ static int iface_search(struct in6_addr *local,  int prefix,
  
   for (context = daemon->dhcp6; context; context = context->next)
     if (!(context->flags & (CONTEXT_TEMPLATE | CONTEXT_OLD)) &&
-	prefix == context->prefix &&
+	prefix <= context->prefix && //KDB
 	is_same_net6(local, &context->start6, prefix) &&
 	is_same_net6(local, &context->end6, prefix) &&
 	context->ra_time != 0 && 
@@ -665,7 +667,7 @@ static int iface_search(struct in6_addr *local,  int prefix,
 	/* zero timers for other contexts on the same subnet, so they don't timeout 
 	   independently */
 	for (context = context->next; context; context = context->next)
-	  if (prefix == context->prefix &&
+	  if (prefix <= context->prefix && //KDB
 	      is_same_net6(local, &context->start6, prefix) &&
 	      is_same_net6(local, &context->end6, prefix))
 	    context->ra_time = 0;
