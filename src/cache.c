@@ -1003,7 +1003,7 @@ void cache_reload(void)
 	cache->addr.key.algo = key->algo;
 	cache->addr.key.flags = key->flags;
 	cache->addr.key.keytag = dnskey_keytag(key->algo, key->flags, (unsigned char *)key->key, key->keylen);
-	cache->uid = C_IN; /* TODO - in option? */
+	cache->uid = key->class;
 	cache_hash(cache);
       }
 #endif
@@ -1255,7 +1255,7 @@ void dump_cache(time_t now)
 	  {
 	    char *a = daemon->addrbuff, *p = daemon->namebuff, *n = cache_get_name(cache);
 	    *a = 0;
-	    if (strlen(n) == 0)
+	    if (strlen(n) == 0 && !(cache->flags & F_REVERSE))
 	      n = "<Root>";
 	    p += sprintf(p, "%-40.40s ", n);
 	    if ((cache->flags & F_CNAME) && !is_outdated_cname_pointer(cache))

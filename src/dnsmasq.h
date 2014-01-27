@@ -231,7 +231,8 @@ struct event_desc {
 #define OPT_QUIET_RA	   44
 #define OPT_DNSSEC_VALID   45
 #define OPT_DNSSEC_PERMISS 46
-#define OPT_LAST           47
+#define OPT_DNSSEC_DEBUG   47
+#define OPT_LAST           48
 
 /* extra flags for my_syslog, we use a couple of facilities since they are known 
    not to occupy the same bits as priorities, no matter how syslog.h is set up. */
@@ -296,7 +297,7 @@ struct cname {
 
 struct dnskey {
   char *name, *key;
-  int keylen, algo, flags;
+  int keylen, class, algo, flags;
   struct dnskey *next;
 };
 
@@ -538,6 +539,12 @@ struct hostsfile {
 #define FREC_DNSKEY_QUERY       8
 #define FREC_DS_QUERY          16
 
+#ifdef HAVE_DNSSEC
+#define HASH_SIZE 20 /* SHA-1 digest size */
+#else
+#define HASH_SIZE sizeof(int)
+#endif
+
 struct frec {
   union mysockaddr source;
   struct all_addr dest;
@@ -549,9 +556,9 @@ struct frec {
   unsigned int iface;
   unsigned short orig_id, new_id;
   int fd, forwardall, flags;
-  unsigned int crc;
   time_t time;
-#ifdef HAVE_DNSSEC
+  unsigned char *hash[HASH_SIZE];
+#ifdef HAVE_DNSSEC 
   int class;
   struct blockdata *stash; /* Saved reply, whilst we validate */
   size_t stash_len;
@@ -1030,7 +1037,7 @@ size_t setup_reply(struct dns_header *header, size_t  qlen,
 		   unsigned long local_ttl);
 int extract_addresses(struct dns_header *header, size_t qlen, char *namebuff, 
 		      time_t now, char **ipsets, int is_sign, int checkrebind,
-		      int no_cache, int secure);
+		      int no_cache, int secure, int *doctored);
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		   struct in_addr local_addr, struct in_addr local_netmask, time_t now);
 int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name, 
@@ -1069,6 +1076,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t n, char 
 int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class);
 int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int *class);
 int dnskey_keytag(int alg, int flags, unsigned char *rdata, int rdlen);
+unsigned char* hash_questions(struct dns_header *header, size_t plen, char *name);
 
 /* util.c */
 void rand_init(void);

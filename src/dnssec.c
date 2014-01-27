@@ -581,7 +581,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 		   /* If it's a type we're going to cache, cache the RRISG too */
 		   if (type_covered == T_A || type_covered == T_AAAA ||
 		       type_covered == T_CNAME || type_covered == T_DS || 
-		       type_covered == T_DNSKEY) 
+		       type_covered == T_DNSKEY || type_covered == T_PTR) 
 		     {
 		       struct all_addr a;
 		       struct blockdata *block;
@@ -795,18 +795,16 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
       GETSHORT(qclass, p);
       GETLONG(ttl, p);
       GETSHORT(rdlen, p);
-
-      if (qclass != class || qtype != T_DNSKEY || rc == 2)
-	{
-	  if (ADD_RDLEN(header, p, plen, rdlen))
-	    continue;
-
-	  return STAT_INSECURE; /* bad packet */
-	}
-      
+ 
       if (!CHECK_LEN(header, p, plen, rdlen) || rdlen < 4)
 	return STAT_INSECURE; /* bad packet */
       
+      if (qclass != class || qtype != T_DNSKEY || rc == 2)
+	{
+	  p += rdlen;
+	  continue;
+	}
+            
       psave = p;
       
       GETSHORT(flags, p);
@@ -1099,7 +1097,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 		  struct all_addr a;
 		  struct blockdata *key;
 		  struct crec *crecp;
-		  
+
 		  cache_start_insert();
 		  
 		  for (p2 = ans_start, j = 0; j < ntohs(header->ancount) + ntohs(header->nscount); j++)
@@ -1335,7 +1333,7 @@ size_t dnssec_generate_query(struct dns_header *header, char *end, char *name, i
   unsigned char *p;
   char types[20];
   
-  querystr("dnssec", types, type);
+  querystr("dnssec-query", types, type);
 
   if (addr->sa.sa_family == AF_INET) 
     log_query(F_DNSSEC | F_IPV4, name, (struct all_addr *)&addr->in.sin_addr, types);
@@ -1351,7 +1349,9 @@ size_t dnssec_generate_query(struct dns_header *header, char *end, char *name, i
 
   header->hb3 = HB3_RD; 
   SET_OPCODE(header, QUERY);
-  header->hb4 = HB4_CD;
+  /* For debugging, set Checking Disabled, otherwise, have the upstream check too,
+     this allows it to select auth servers when one is returning bad data. */
+  header->hb4 = option_bool(OPT_DNSSEC_DEBUG) ? HB4_CD : 0;
 
   /* ID filled in later */
 
@@ -1364,5 +1364,36 @@ size_t dnssec_generate_query(struct dns_header *header, char *end, char *name, i
 
   return add_do_bit(header, p - (unsigned char *)header, end);
 }
+
+unsigned char* hash_questions(struct dns_header *header, size_t plen, char *name)
+{
+  int q;
+  unsigned int len;
+  unsigned char *p = (unsigned char *)(header+1);
+  const struct nettle_hash *hash;
+  void *ctx;
+  unsigned char *digest;
   
+  if (!(hash = hash_find("sha1")) || !hash_init(hash, &ctx, &digest))
+    return NULL;
+  
+  for (q = ntohs(header->qdcount); q != 0; q--) 
+    {
+      if (!extract_name(header, plen, &p, name, 1, 4))
+	break; /* bad packet */
+      
+      len = to_wire(name);
+      hash->update(ctx, len, (unsigned char *)name);
+      /* CRC the class and type as well */
+      hash->update(ctx, 4, p);
+
+      p += 4;
+      if (!CHECK_LEN(header, p, plen, 0))
+	break; /* bad packet */
+    }
+  
+  hash->digest(ctx, hash->digest_size, digest);
+  return digest;
+}
+
 #endif /* HAVE_DNSSEC */

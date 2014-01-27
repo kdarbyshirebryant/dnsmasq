@@ -16,11 +16,11 @@
 
 #include "dnsmasq.h"
 
-static struct frec *lookup_frec(unsigned short id, unsigned int crc);
+static struct frec *lookup_frec(unsigned short id, void *hash);
 static struct frec *lookup_frec_by_sender(unsigned short id,
 					  union mysockaddr *addr,
-					  unsigned int crc);
-static unsigned short get_id(unsigned int crc);
+					  void *hash);
+static unsigned short get_id(void);
 static void free_frec(struct frec *f);
 static struct randfd *allocate_rfd(int family);
 
@@ -239,18 +239,23 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   char *domain = NULL;
   int type = 0, norebind = 0;
   struct all_addr *addrp = NULL;
-  unsigned int crc = questions_crc(header, plen, daemon->namebuff);
   unsigned int flags = 0;
-  unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
   struct server *start = NULL;
-  
+#ifdef HAVE_DNSSEC
+  void *hash = hash_questions(header, plen, daemon->namebuff);
+#else
+  unsigned int crc = questions_crc(header, plen, daemon->namebuff);
+  void *hash = &crc;
+#endif
+ unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
+
   /* RFC 4035: sect 4.6 para 2 */
   header->hb4 &= ~HB4_AD;
   
   /* may be no servers available. */
   if (!daemon->servers)
     forward = NULL;
-  else if (forward || (forward = lookup_frec_by_sender(ntohs(header->id), udpaddr, crc)))
+  else if (forward || (hash && (forward = lookup_frec_by_sender(ntohs(header->id), udpaddr, hash))))
     {
 #ifdef HAVE_DNSSEC
       /* If we've already got an answer to this query, but we're awaiting keys for vaildation,
@@ -320,9 +325,9 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  forward->dest = *dst_addr;
 	  forward->iface = dst_iface;
 	  forward->orig_id = ntohs(header->id);
-	  forward->new_id = get_id(crc);
+	  forward->new_id = get_id();
 	  forward->fd = udpfd;
-	  forward->crc = crc;
+	  memcpy(forward->hash, hash, HASH_SIZE);
 	  forward->forwardall = 0;
 	  forward->flags = 0;
 	  if (norebind)
@@ -386,7 +391,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (option_bool(OPT_DNSSEC_VALID))
 	{
 	  plen = add_do_bit(header, plen, ((char *) header) + daemon->packet_buff_sz);
-	  header->hb4 |= HB4_CD;
+	  /* For debugging, set Checking Disabled, otherwise, have the upstream check too,
+	     this allows it to select auth servers when one is returning bad data. */
+	  if (option_bool(OPT_DNSSEC_DEBUG))
+	    header->hb4 |= HB4_CD;
 	}
 #endif
 
@@ -548,14 +556,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   if (!is_sign && !option_bool(OPT_DNSSEC_PROXY))
      header->hb4 &= ~HB4_AD;
   
-#ifdef HAVE_DNSSEC
-  if (option_bool(OPT_DNSSEC_VALID))
-    header->hb4 &= ~HB4_AD;
-  
-  if (!(header->hb4 & HB4_CD) && cache_secure)
-    header->hb4 |= HB4_AD;
-#endif
-  
   if (OPCODE(header) != QUERY || (RCODE(header) != NOERROR && RCODE(header) != NXDOMAIN))
     return n;
   
@@ -575,9 +575,12 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       munged = 1;
       SET_RCODE(header, NXDOMAIN);
       header->hb3 &= ~HB3_AA;
+      cache_secure = 0;
     }
   else 
     {
+      int doctored = 0;
+      
       if (RCODE(header) == NXDOMAIN && 
 	  extract_request(header, n, daemon->namebuff, NULL) &&
 	  check_for_local_domain(daemon->namebuff, now))
@@ -588,38 +591,36 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  munged = 1;
 	  header->hb3 |= HB3_AA;
 	  SET_RCODE(header, NOERROR);
+	  cache_secure = 0;
 	}
       
-      if (extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure))
+      if (extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
 	{
 	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
 	  munged = 1;
+	  cache_secure = 0;
 	}
+
+      if (doctored)
+	cache_secure = 0;
     }
   
 #ifdef HAVE_DNSSEC
   if (no_cache && !(header->hb4 & HB4_CD)) 
     {
-      if (option_bool(OPT_DNSSEC_PERMISS))
-	{
-	  unsigned short type;
-	  char types[20];
-	  
-	  if (extract_request(header, (size_t)n, daemon->namebuff, &type))
-	    {
-	      querystr("", types, type);
-	      my_syslog(LOG_WARNING, _("DNSSEC validation failed: query %s%s"), daemon->namebuff, types);
-	    }
-	  else
-	    my_syslog(LOG_WARNING, _("DNSSEC validation failed for unknown query"));
-	}
-      else
+      if (!option_bool(OPT_DNSSEC_DEBUG))
 	{
 	  /* Bogus reply, turn into SERVFAIL */
 	  SET_RCODE(header, SERVFAIL);
 	  munged = 1;
 	}
     }
+
+  if (option_bool(OPT_DNSSEC_VALID))
+    header->hb4 &= ~HB4_AD;
+  
+  if (!(header->hb4 & HB4_CD) && cache_secure)
+    header->hb4 |= HB4_AD;
 #endif
 
   /* do this after extract_addresses. Ensure NODATA reply and remove
@@ -650,7 +651,11 @@ void reply_query(int fd, int family, time_t now)
   ssize_t n = recvfrom(fd, daemon->packet, daemon->packet_buff_sz, 0, &serveraddr.sa, &addrlen);
   size_t nn;
   struct server *server;
-  
+  void *hash;
+#ifndef HAVE_DNSSEC
+  unsigned int crc;
+#endif
+
   /* packet buffer overwritten */
   daemon->srv_save = NULL;
   
@@ -668,10 +673,17 @@ void reply_query(int fd, int family, time_t now)
       break;
    
   header = (struct dns_header *)daemon->packet;
+
+#ifdef HAVE_DNSSEC
+  hash = hash_questions(header, n, daemon->namebuff);
+#else
+  hash = &crc;
+  crc = questions_crc(header, n, daemon->namebuff);
+#endif
   
   if (!server ||
       n < (int)sizeof(struct dns_header) || !(header->hb3 & HB3_QR) ||
-      !(forward = lookup_frec(ntohs(header->id), questions_crc(header, n, daemon->namebuff))))
+      !(forward = lookup_frec(ntohs(header->id), hash)))
     return;
 
   if ((RCODE(header) == SERVFAIL || RCODE(header) == REFUSED) &&
@@ -810,8 +822,9 @@ void reply_query(int fd, int family, time_t now)
 			  nn = dnssec_generate_query(header,((char *) header) + daemon->packet_buff_sz,
 						     daemon->keyname, forward->class, T_DS, &server->addr);
 			}
-		      new->crc = questions_crc(header, nn, daemon->namebuff);
-		      new->new_id = get_id(new->crc);
+		      if ((hash = hash_questions(header, nn, daemon->namebuff)))
+			memcpy(new->hash, hash, HASH_SIZE);
+		      new->new_id = get_id();
 		      header->id = htons(new->new_id);
 		      /* Save query for retransmission */
 		      new->stash = blockdata_alloc((char *)header, nn);
@@ -855,42 +868,34 @@ void reply_query(int fd, int family, time_t now)
 	     and validate them with the new data. Failure to find needed data here is an internal error.
 	     Once we get to the original answer (FREC_DNSSEC_QUERY not set) and it validates,
 	     return it to the original requestor. */
-	  if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
+	  while (forward->dependent)
 	    {
-	      while (forward->dependent)
-		{
-		  struct frec *prev;
-		  
-		  if (status == STAT_SECURE)
-		    {
-		      if (forward->flags & FREC_DNSKEY_QUERY)
-			status = dnssec_validate_by_ds(now, header, n, daemon->namebuff, daemon->keyname, forward->class);
-		      else if (forward->flags & FREC_DS_QUERY)
-			status = dnssec_validate_ds(now, header, n, daemon->namebuff, daemon->keyname, forward->class);
-		    }
-		  
-		  prev = forward->dependent;
-		  free_frec(forward);
-		  forward = prev;
-		  forward->blocking_query = NULL; /* already gone */
-		  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
-                  n = forward->stash_len;
-		}
+	      struct frec *prev = forward->dependent;
+	      free_frec(forward);
+	      forward = prev;
+	      forward->blocking_query = NULL; /* already gone */
+	      blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
+	      n = forward->stash_len;
 	      
-	      /* All DNSKEY and DS records done and in cache, now finally validate original 
-		 answer, provided last DNSKEY is OK. */
 	      if (status == STAT_SECURE)
-		status = dnssec_validate_reply(now, header, n, daemon->namebuff, daemon->keyname, &forward->class);
-	      
-	      if (status == STAT_NEED_DS || status == STAT_NEED_KEY)
 		{
-		  my_syslog(LOG_ERR, _("Unexpected missing data for DNSSEC validation"));
-		  status = STAT_INSECURE;
+		  if (forward->flags & FREC_DNSKEY_QUERY)
+		    status = dnssec_validate_by_ds(now, header, n, daemon->namebuff, daemon->keyname, forward->class);
+		  else if (forward->flags & FREC_DS_QUERY)
+		    status = dnssec_validate_ds(now, header, n, daemon->namebuff, daemon->keyname, forward->class);
+		  else
+		    status = dnssec_validate_reply(now, header, n, daemon->namebuff, daemon->keyname, &forward->class);	
+		  
+		  if (status == STAT_NEED_DS || status == STAT_NEED_KEY)
+		    {
+		      my_syslog(LOG_ERR, _("Unexpected missing data for DNSSEC validation"));
+		      status = STAT_INSECURE;
+		    }
 		}
 	    }
 	  
 	  if (status == STAT_TRUNCATED)
-	     header->hb3 |= HB3_TC;
+	    header->hb3 |= HB3_TC;
 	  else
 	    log_query(F_KEYTAG | F_SECSTAT, "result", NULL, 
 		      status == STAT_SECURE ? "SECURE" : (status == STAT_INSECURE ? "INSECURE" : "BOGUS"));
@@ -1362,8 +1367,13 @@ unsigned char *tcp_request(int confd, time_t now,
 	      if (!flags && last_server)
 		{
 		  struct server *firstsendto = NULL;
+#ifdef HAVE_DNSSEC
+		  unsigned char *newhash, hash[HASH_SIZE];
+		  if ((newhash = hash_questions(header, (unsigned int)size, daemon->keyname)))
+		    memcpy(hash, newhash, HASH_SIZE);
+#else
 		  unsigned int crc = questions_crc(header, (unsigned int)size, daemon->namebuff);
-		  
+#endif		  
 		  /* Loop round available servers until we succeed in connecting to one.
 		     Note that this code subtley ensures that consecutive queries on this connection
 		     which can go to the same server, do so. */
@@ -1486,10 +1496,24 @@ unsigned char *tcp_request(int confd, time_t now,
 		      /* If the crc of the question section doesn't match the crc we sent, then
 			 someone might be attempting to insert bogus values into the cache by 
 			 sending replies containing questions and bogus answers. */
-		      if (crc == questions_crc(header, (unsigned int)m, daemon->namebuff))
-			m = process_reply(header, now, last_server, (unsigned int)m, 
-					  option_bool(OPT_NO_REBIND) && !norebind, no_cache_dnssec,
-					  cache_secure, check_subnet, &peer_addr); 
+#ifdef HAVE_DNSSEC
+		      newhash = hash_questions(header, (unsigned int)m, daemon->namebuff);
+		      if (!newhash || memcmp(hash, newhash, HASH_SIZE) != 0)
+			{ 
+			  m = 0;
+			  break;
+			}
+#else			  
+		      if (crc != questions_crc(header, (unsigned int)m, daemon->namebuff))
+			{
+			  m = 0;
+			  break;
+			}
+#endif
+
+		      m = process_reply(header, now, last_server, (unsigned int)m, 
+					option_bool(OPT_NO_REBIND) && !norebind, no_cache_dnssec,
+					cache_secure, check_subnet, &peer_addr); 
 		      
 		      break;
 		    }
@@ -1679,13 +1703,13 @@ struct frec *get_new_frec(time_t now, int *wait, int force)
 }
  
 /* crc is all-ones if not known. */
-static struct frec *lookup_frec(unsigned short id, unsigned int crc)
+static struct frec *lookup_frec(unsigned short id, void *hash)
 {
   struct frec *f;
 
   for(f = daemon->frec_list; f; f = f->next)
     if (f->sentto && f->new_id == id && 
-	(f->crc == crc || crc == 0xffffffff))
+	(!hash || memcmp(hash, f->hash, HASH_SIZE) == 0))
       return f;
       
   return NULL;
@@ -1693,14 +1717,14 @@ static struct frec *lookup_frec(unsigned short id, unsigned int crc)
 
 static struct frec *lookup_frec_by_sender(unsigned short id,
 					  union mysockaddr *addr,
-					  unsigned int crc)
+					  void *hash)
 {
   struct frec *f;
   
   for(f = daemon->frec_list; f; f = f->next)
     if (f->sentto &&
 	f->orig_id == id && 
-	f->crc == crc &&
+	memcmp(hash, f->hash, HASH_SIZE) == 0 &&
 	sockaddr_isequal(&f->source, addr))
       return f;
    
@@ -1724,13 +1748,13 @@ void server_gone(struct server *server)
 }
 
 /* return unique random ids. */
-static unsigned short get_id(unsigned int crc)
+static unsigned short get_id(void)
 {
   unsigned short ret = 0;
   
   do 
     ret = rand16();
-  while (lookup_frec(ret, crc));
+  while (lookup_frec(ret, NULL));
   
   return ret;
 }
