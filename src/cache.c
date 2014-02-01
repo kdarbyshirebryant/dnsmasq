@@ -170,7 +170,22 @@ static void cache_hash(struct crec *crecp)
   crecp->hash_next = *up;
   *up = crecp;
 }
- 
+
+#ifdef HAVE_DNSSEC
+static void cache_blockdata_free(struct crec *crecp)
+{
+  if (crecp->flags & F_DNSKEY)
+    {
+      if (crecp->flags & F_DS)
+	blockdata_free(crecp->addr.sig.keydata);
+      else
+	blockdata_free(crecp->addr.key.keydata);
+    }
+  else if (crecp->flags & F_DS)
+    blockdata_free(crecp->addr.ds.keydata);
+}
+#endif
+
 static void cache_free(struct crec *crecp)
 {
   crecp->flags &= ~F_FORWARD;
@@ -195,9 +210,9 @@ static void cache_free(struct crec *crecp)
       big_free = crecp->name.bname;
       crecp->flags &= ~F_BIGNAME;
     }
+
 #ifdef HAVE_DNSSEC
-  else if (crecp->flags & (F_DNSKEY | F_DS))
-    blockdata_free(crecp->addr.key.keydata);
+  cache_blockdata_free(crecp);
 #endif
 }    
 
@@ -345,7 +360,8 @@ static int cache_scan_free(char *name, struct all_addr *addr, time_t now, unsign
 #ifdef HAVE_DNSSEC
 	      /* Deletion has to be class-sensitive for DS, DNSKEY, RRSIG, also 
 		 type-covered sensitive for  RRSIG */
-	      if ((flags & (F_DNSKEY | F_DS)) == (crecp->flags & (F_DNSKEY | F_DS)) &&
+	      if ((flags & (F_DNSKEY | F_DS)) &&
+		  (flags & (F_DNSKEY | F_DS)) == (crecp->flags & (F_DNSKEY | F_DS)) &&
 		  crecp->uid == addr->addr.dnssec.class &&
 		  (!((flags & (F_DS | F_DNSKEY)) == (F_DS | F_DNSKEY)) || 
 		   crecp->addr.sig.type_covered == addr->addr.dnssec.type))
@@ -955,8 +971,7 @@ void cache_reload(void)
     for (cache = hash_table[i], up = &hash_table[i]; cache; cache = tmp)
       {
 #ifdef HAVE_DNSSEC
-	if (cache->flags & (F_DNSKEY | F_DS))
-	  blockdata_free(cache->addr.key.keydata);
+	cache_blockdata_free(cache);
 #endif
 	tmp = cache->hash_next;
 	if (cache->flags & (F_HOSTS | F_CONFIG))

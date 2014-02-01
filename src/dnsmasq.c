@@ -343,7 +343,12 @@ int main (int argc, char **argv)
 #endif
   
   if (daemon->port != 0)
-    cache_init();
+    {
+      cache_init();
+#ifdef HAVE_DNSSEC
+      blockdata_init();
+#endif
+    }
     
   if (option_bool(OPT_DBUS))
 #ifdef HAVE_DBUS
@@ -692,11 +697,16 @@ int main (int argc, char **argv)
 	my_syslog(LOG_INFO, _("DBus support enabled: bus connection pending"));
     }
 #endif
+  
+#ifdef HAVE_DNSSEC
+  if (option_bool(OPT_DNSSEC_VALID))
+    my_syslog(LOG_INFO, _("DNSSEC validation enabled"));
+#endif
 
   if (log_err != 0)
     my_syslog(LOG_WARNING, _("warning: failed to change owner of %s: %s"), 
 	      daemon->log_file, strerror(log_err));
-
+  
   if (bind_fallback)
     my_syslog(LOG_WARNING, _("setting --bind-interfaces option because of OS limitations"));
 
