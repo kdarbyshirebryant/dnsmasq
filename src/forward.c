@@ -770,12 +770,12 @@ void reply_query(int fd, int family, time_t now)
 	      status = STAT_TRUNCATED;
 	    }
 	  else if (forward->flags & FREC_DNSKEY_QUERY)
-	    status = dnssec_validate_by_ds(now, header, n, daemon->namebuff, daemon->keyname, forward->class);		      
+	    status = dnssec_validate_by_ds(now, header, n, daemon->namebuff, daemon->keyname, forward->class);
 	  else if (forward->flags & FREC_DS_QUERY)
 	    status = dnssec_validate_ds(now, header, n, daemon->namebuff, daemon->keyname, forward->class);
 	  else
 	    status = dnssec_validate_reply(now, header, n, daemon->namebuff, daemon->keyname, &forward->class);
-	  
+	    
 	  /* Can't validate, as we're missing key data. Put this
 	     answer aside, whilst we get that. */     
 	  if (status == STAT_NEED_DS || status == STAT_NEED_KEY)
@@ -1207,7 +1207,7 @@ static int tcp_key_recurse(time_t now, int status, int class, char *keyname, str
     {
       n = (c1 << 8) | c2;
       
-      if (status ==  STAT_NEED_KEY)
+      if (status == STAT_NEED_KEY)
 	new_status = dnssec_validate_by_ds(now, header, n, daemon->namebuff, daemon->keyname, class);
       else
 	new_status = dnssec_validate_ds(now, header, n, daemon->namebuff, daemon->keyname, class);
