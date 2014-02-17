@@ -55,7 +55,9 @@ static const struct {
   { 41,  "OPT" },
   { 43,  "DS" },
   { 46,  "RRSIG" },
+  { 47,  "NSEC" },
   { 48,  "DNSKEY" },
+  { 50,  "NSEC3" },
   { 249, "TKEY" },
   { 250, "TSIG" },
   { 251, "IXFR" },
@@ -446,19 +448,21 @@ struct crec *cache_insert(char *name, struct all_addr *addr,
   int freed_all = flags & F_REVERSE;
   int free_avail = 0;
 
-  if (daemon->max_cache_ttl != 0 && daemon->max_cache_ttl < ttl)
-    ttl = daemon->max_cache_ttl;
-
-  /* Don't log keys here, done elsewhere */
+  /* Don't log DNSSEC records here, done elsewhere */
   if (flags & (F_IPV4 | F_IPV6 | F_CNAME))
-    log_query(flags | F_UPSTREAM, name, addr, NULL);
+    {
+      log_query(flags | F_UPSTREAM, name, addr, NULL);
+      /* Don;t mess with TTL for DNSSEC records. */
+      if (daemon->max_cache_ttl != 0 && daemon->max_cache_ttl < ttl)
+	ttl = daemon->max_cache_ttl;
+    }
 
   /* if previous insertion failed give up now. */
   if (insert_error)
     return NULL;
   
   /* First remove any expired entries and entries for the name/address we
-     are currently inserting. Fail is we attempt to delete a name from
+     are currently inserting. Fail if we attempt to delete a name from
      /etc/hosts or DHCP. */
   if (!cache_scan_free(name, addr, now, flags))
     {
@@ -592,10 +596,13 @@ void cache_end_insert(void)
   new_chain = NULL;
 }
 
-struct crec *cache_find_by_name(struct crec *crecp, char *name, time_t now, unsigned short prot)
+struct crec *cache_find_by_name(struct crec *crecp, char *name, time_t now, unsigned int prot)
 {
   struct crec *ans;
+  int no_rr = prot & F_NO_RR;
 
+  prot &= ~F_NO_RR;
+  
   if (crecp) /* iterating */
     ans = crecp->next;
   else
@@ -643,7 +650,7 @@ struct crec *cache_find_by_name(struct crec *crecp, char *name, time_t now, unsi
 		    }
 		  else
 		    {
-		      if (!insert)
+		      if (!insert && !no_rr)
 			{
 			  insert = up;
 			  ins_flags = crecp->flags & (F_REVERSE | F_IMMORTAL);
@@ -683,7 +690,7 @@ struct crec *cache_find_by_name(struct crec *crecp, char *name, time_t now, unsi
 }
 
 struct crec *cache_find_by_addr(struct crec *crecp, struct all_addr *addr, 
-				time_t now, unsigned short prot)
+				time_t now, unsigned int prot)
 {
   struct crec *ans;
 #ifdef HAVE_IPV6
@@ -980,7 +987,7 @@ void cache_reload(void)
   struct cname *a;
   struct interface_name *intr;
 #ifdef HAVE_DNSSEC
-  struct dnskey *key;
+  struct ds_config *ds;
 #endif
 
   cache_inserted = cache_live_freed = 0;
@@ -1026,17 +1033,17 @@ void cache_reload(void)
 	}
 
 #ifdef HAVE_DNSSEC
-  for (key = daemon->dnskeys; key; key = key->next)
+  for (ds = daemon->ds; ds; ds = ds->next)
     if ((cache = whine_malloc(sizeof(struct crec))) &&
-	(cache->addr.key.keydata = blockdata_alloc(key->key, key->keylen)))
+	(cache->addr.ds.keydata = blockdata_alloc(ds->digest, ds->digestlen)))
       {
-	cache->flags = F_FORWARD | F_IMMORTAL | F_DNSKEY | F_CONFIG | F_NAMEP;
-	cache->name.namep = key->name;
-	cache->addr.key.keylen = key->keylen;
-	cache->addr.key.algo = key->algo;
-	cache->addr.key.flags = key->flags;
-	cache->addr.key.keytag = dnskey_keytag(key->algo, key->flags, (unsigned char *)key->key, key->keylen);
-	cache->uid = key->class;
+	cache->flags = F_FORWARD | F_IMMORTAL | F_DS | F_CONFIG | F_NAMEP;
+	cache->name.namep = ds->name;
+	cache->addr.ds.keylen = ds->digestlen;
+	cache->addr.ds.algo = ds->algo;
+	cache->addr.ds.keytag = ds->keytag;
+	cache->addr.ds.digest = ds->digest_type;
+	cache->uid = ds->class;
 	cache_hash(cache);
       }
 #endif
@@ -1298,12 +1305,10 @@ void dump_cache(time_t now)
 	      {
 		if (cache->flags & F_DNSKEY)
 		  {
-		    char tp[20];
 		    /* RRSIG */
-		    querystr("", tp, cache->addr.sig.type_covered);
 		    a = daemon->addrbuff;
 		    sprintf(a, "%5u %3u %s", cache->addr.sig.keytag,
-			    cache->addr.sig.algo, tp);
+			    cache->addr.sig.algo, querystr("", cache->addr.sig.type_covered));
 		  }
 		else
 		  {
@@ -1379,14 +1384,45 @@ char *record_source(int index)
   return "<unknown>";
 }
 
-void querystr(char *desc, char *str, unsigned short type)
+char *querystr(char *desc, unsigned short type)
 {
   unsigned int i;
-  
-  sprintf(str, "%s[type=%d]", desc, type); 
+  int len = 10; /* strlen("type=xxxxx") */
+  const char *types = NULL;
+  static char *buff = NULL;
+  static int bufflen = 0;
+
   for (i = 0; i < (sizeof(typestr)/sizeof(typestr[0])); i++)
     if (typestr[i].type == type)
-      sprintf(str,"%s[%s]", desc, typestr[i].name);
+      {
+	types = typestr[i].name;
+	len = strlen(types);
+	break;
+      }
+
+  len += 3; /* braces, terminator */
+  len += strlen(desc);
+
+  if (!buff || bufflen < len)
+    {
+      if (buff)
+	free(buff);
+      else if (len < 20)
+	len = 20;
+      
+      buff = whine_malloc(len);
+      bufflen = len;
+    }
+
+  if (buff)
+    {
+      if (types)
+	sprintf(buff, "%s[%s]", desc, types);
+      else
+	sprintf(buff, "%s[type=%d]", desc, type);
+    }
+
+  return buff ? buff : "";
 }
 
 void log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg)

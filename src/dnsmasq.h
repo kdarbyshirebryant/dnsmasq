@@ -295,10 +295,10 @@ struct cname {
   struct cname *next;
 }; 
 
-struct dnskey {
-  char *name, *key;
-  int keylen, class, algo, flags;
-  struct dnskey *next;
+struct ds_config {
+  char *name, *digest;
+  int digestlen, class, algo, keytag, digest_type;
+  struct ds_config *next;
 };
 
 #define ADDRLIST_LITERAL 1
@@ -423,6 +423,7 @@ struct crec {
 #define F_DNSSEC    (1u<<22)
 #define F_KEYTAG    (1u<<23)
 #define F_SECSTAT   (1u<<24)
+#define F_NO_RR     (1u<<25)
 
 
 /* struct sockaddr is not large enough to hold any address,
@@ -538,6 +539,7 @@ struct hostsfile {
 #define FREC_HAS_SUBNET         4
 #define FREC_DNSKEY_QUERY       8
 #define FREC_DS_QUERY          16
+#define FREC_AD_QUESTION       32
 
 #ifdef HAVE_DNSSEC
 #define HASH_SIZE 20 /* SHA-1 digest size */
@@ -559,7 +561,7 @@ struct frec {
   time_t time;
   unsigned char *hash[HASH_SIZE];
 #ifdef HAVE_DNSSEC 
-  int class;
+  int class, work_counter;
   struct blockdata *stash; /* Saved reply, whilst we validate */
   size_t stash_len;
   struct frec *dependent; /* Query awaiting internally-generated DNSKEY or DS query */
@@ -928,7 +930,7 @@ extern struct daemon {
   struct prefix_class *prefix_classes;
 #endif
 #ifdef HAVE_DNSSEC
-  struct dnskey *dnskeys;
+  struct ds_config *ds;
 #endif
 
   /* globally used stuff for DNS */
@@ -990,12 +992,12 @@ extern struct daemon {
 void cache_init(void);
 void log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg); 
 char *record_source(int index);
-void querystr(char *desc, char *str, unsigned short type);
+char *querystr(char *desc, unsigned short type);
 struct crec *cache_find_by_addr(struct crec *crecp,
 				struct all_addr *addr, time_t now, 
-				unsigned short prot);
+				unsigned int prot);
 struct crec *cache_find_by_name(struct crec *crecp, 
-				char *name, time_t now, unsigned short  prot);
+				char *name, time_t now, unsigned int prot);
 void cache_end_insert(void);
 void cache_start_insert(void);
 struct crec *cache_insert(char *name, struct all_addr *addr,
@@ -1040,7 +1042,8 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *namebuff,
 		      time_t now, char **ipsets, int is_sign, int checkrebind,
 		      int no_cache, int secure, int *doctored);
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
-		   struct in_addr local_addr, struct in_addr local_netmask, time_t now);
+		      struct in_addr local_addr, struct in_addr local_netmask, 
+		      time_t now, int *ad_reqd);
 int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name, 
 			     struct bogus_addr *addr, time_t now);
 unsigned char *find_pseudoheader(struct dns_header *header, size_t plen,
@@ -1104,9 +1107,6 @@ void prettyprint_time(char *buf, unsigned int t);
 int prettyprint_addr(union mysockaddr *addr, char *buf);
 int parse_hex(char *in, unsigned char *out, int maxlen, 
 	      unsigned int *wildcard_mask, int *mac_type);
-#ifdef HAVE_DNSSEC
-int parse_base64(char *in, char *out);
-#endif
 int memcmp_masked(unsigned char *a, unsigned char *b, int len, 
 		  unsigned int mask);
 int expand_buf(struct iovec *iov, size_t size);
