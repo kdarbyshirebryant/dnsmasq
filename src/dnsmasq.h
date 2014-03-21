@@ -233,7 +233,8 @@ struct event_desc {
 #define OPT_DNSSEC_PERMISS 46
 #define OPT_DNSSEC_DEBUG   47
 #define OPT_DNSSEC_NO_SIGN 48 
-#define OPT_LAST           49
+#define OPT_LOCAL_SERVICE  49
+#define OPT_LAST           50
 
 /* extra flags for my_syslog, we use a couple of facilities since they are known 
    not to occupy the same bits as priorities, no matter how syslog.h is set up. */
@@ -366,7 +367,7 @@ struct crec {
 	struct crec *cache;
 	struct interface_name *int_name;
       } target;
-      int uid; /* -1 if union is interface-name */
+      unsigned int uid; /* 0 if union is interface-name */
     } cname;
     struct {
       struct blockdata *keydata;
@@ -387,7 +388,7 @@ struct crec {
   } addr;
   time_t ttd; /* time to die */
   /* used as class if DNSKEY/DS/RRSIG, index to source for F_HOSTS */
-  int uid; 
+  unsigned int uid; 
   unsigned short flags;
   union {
     char sname[SMALLDNAME];
@@ -425,6 +426,12 @@ struct crec {
 #define F_KEYTAG    (1u<<23)
 #define F_SECSTAT   (1u<<24)
 #define F_NO_RR     (1u<<25)
+
+/* Values of uid in crecs with F_CONFIG bit set. */
+#define SRC_INTERFACE 0
+#define SRC_CONFIG    1
+#define SRC_HOSTS     2
+#define SRC_AH        3
 
 
 /* struct sockaddr is not large enough to hold any address,
@@ -524,7 +531,7 @@ struct hostsfile {
   struct hostsfile *next;
   int flags;
   char *fname;
-  int index; /* matches to cache entries for logging */
+  unsigned int index; /* matches to cache entries for logging */
 };
 
 
@@ -966,6 +973,7 @@ extern struct daemon {
   pid_t tcp_pids[MAX_PROCS];
   struct randfd randomsocks[RANDOM_SOCKS];
   int v6pktinfo; 
+  struct addrlist *interface_addrs; /* list of all addresses/prefix lengths associated with all local interfaces */
 
   /* DHCP state */
   int dhcpfd, helperfd, pxefd; 
@@ -1003,7 +1011,7 @@ extern struct daemon {
 /* cache.c */
 void cache_init(void);
 void log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg); 
-char *record_source(int index);
+char *record_source(unsigned int index);
 char *querystr(char *desc, unsigned short type);
 struct crec *cache_find_by_addr(struct crec *crecp,
 				struct all_addr *addr, time_t now, 

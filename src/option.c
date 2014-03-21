@@ -144,6 +144,7 @@ struct myoption {
 #define LOPT_REV_SERV     332
 #define LOPT_SERVERS_FILE 333
 #define LOPT_DNSSEC_CHECK 334
+#define LOPT_LOCAL_SERVICE 335
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -175,6 +176,7 @@ static const struct myoption opts[] =
     { "domain-suffix", 1, 0, 's' },
     { "interface", 1, 0, 'i' },
     { "listen-address", 1, 0, 'a' },
+    { "local-service", 0, 0, LOPT_LOCAL_SERVICE },
     { "bogus-priv", 0, 0, 'b' },
     { "bogus-nxdomain", 1, 0, 'B' },
     { "selfmx", 0, 0, 'e' },
@@ -448,6 +450,7 @@ static struct {
   { LOPT_QUIET_DHCP, OPT_QUIET_DHCP, NULL, gettext_noop("Do not log routine DHCP."), NULL },
   { LOPT_QUIET_DHCP6, OPT_QUIET_DHCP6, NULL, gettext_noop("Do not log routine DHCPv6."), NULL },
   { LOPT_QUIET_RA, OPT_QUIET_RA, NULL, gettext_noop("Do not log RA."), NULL },
+  { LOPT_LOCAL_SERVICE, OPT_LOCAL_SERVICE, NULL, gettext_noop("Accept queries only from directly-connected networks"), NULL },
   { 0, 0, NULL, NULL, NULL }
 }; 
 
@@ -1661,7 +1664,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     case 'H': /* --addn-hosts */
       {
 	struct hostsfile *new = opt_malloc(sizeof(struct hostsfile));
-	static int hosts_index = 1;
+	static unsigned int hosts_index = SRC_AH;
 	new->fname = opt_string_alloc(arg);
 	new->index = hosts_index++;
 	new->flags = 0;
@@ -4017,10 +4020,11 @@ static int one_file(char *file, int hard_opt)
 /* expand any name which is a directory */
 struct hostsfile *expand_filelist(struct hostsfile *list)
 {
-  int i;
+  unsigned int i;
   struct hostsfile *ah;
 
-  for (i = 0, ah = list; ah; ah = ah->next)
+  /* find largest used index */
+  for (i = SRC_AH, ah = list; ah; ah = ah->next)
     {
       if (i <= ah->index)
 	i = ah->index + 1;
@@ -4456,6 +4460,11 @@ void read_opts(int argc, char **argv, char *compile_opts)
     }
   else if (option_bool(OPT_DHCP_FQDN))
     die(_("there must be a default domain when --dhcp-fqdn is set"), NULL, EC_BADCONF);
+
+  /* If there's access-control config, then ignore --local-service, it's intended
+     as a system default to keep otherwise unconfigured installations safe. */
+  if (daemon->if_names || daemon->if_except || daemon->if_addrs || daemon->authserver)
+    reset_option_bool(OPT_LOCAL_SERVICE); 
 
   if (testmode)
     {

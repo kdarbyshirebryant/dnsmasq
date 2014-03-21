@@ -1065,6 +1065,8 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		      if (newc)
 			{
 			  newc->addr.cname.target.cache = NULL;
+			  /* anything other than zero, to avoid being mistaken for CNAME to interface-name */ 
+			  newc->addr.cname.uid = 1; 
 			  if (cpp)
 			    {
 			      cpp->addr.cname.target.cache = newc;
@@ -1456,7 +1458,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 {
   char *name = daemon->namebuff;
   unsigned char *p, *ansp, *pheader;
-  int qtype, qclass;
+  unsigned int qtype, qclass;
   struct all_addr addr;
   int nameoffset;
   unsigned short flag;
@@ -2016,7 +2018,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    
 			    strcpy(name, cname_target);
 			    /* check if target interface_name */
-			    if (crecp->addr.cname.uid == -1)
+			    if (crecp->addr.cname.uid == 0)
 			      goto intname_restart;
 			    else
 			      goto cname_restart;
