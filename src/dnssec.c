@@ -1682,6 +1682,9 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
   GETSHORT(qtype, p1);
   GETSHORT(qclass, p1);
   ans_start = p1;
+
+  if (qtype == T_ANY)
+    have_answer = 1;
  
   /* Can't validate an RRISG query */
   if (qtype == T_RRSIG)
@@ -2219,7 +2222,7 @@ size_t filter_rrsigs(struct dns_header *header, size_t plen)
 	  
 	  if (i < ntohs(header->ancount))
 	    chop_an++;
-	  else if (i < ntohs(header->nscount))
+	  else if (i < (ntohs(header->nscount) + ntohs(header->ancount)))
 	    chop_ns++;
 	  else
 	    chop_ar++;
