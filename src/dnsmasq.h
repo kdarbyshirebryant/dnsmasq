@@ -165,6 +165,7 @@ struct event_desc {
 #define EVENT_LUA_ERR   19
 #define EVENT_TFTP_ERR  20
 #define EVENT_INIT      21
+#define EVENT_NEWADDR   22
 
 /* Exit codes. */
 #define EC_GOOD        0
@@ -823,7 +824,7 @@ struct dhcp_context {
 #define CONTEXT_NETMASK        (1u<<1)
 #define CONTEXT_BRDCAST        (1u<<2)
 #define CONTEXT_PROXY          (1u<<3)
-#define CONTEXT_RA_ONLY        (1u<<4)
+#define CONTEXT_RA_ROUTER      (1u<<4)
 #define CONTEXT_RA_DONE        (1u<<5)
 #define CONTEXT_RA_NAME        (1u<<6)
 #define CONTEXT_RA_STATELESS   (1u<<7)
@@ -837,7 +838,6 @@ struct dhcp_context {
 #define CONTEXT_USED           (1u<<15)
 #define CONTEXT_OLD            (1u<<16)
 #define CONTEXT_V6             (1u<<17)
-
 
 struct ping_result {
   struct in_addr addr;
@@ -1150,6 +1150,7 @@ void bump_maxfd(int fd, int *max);
 int read_write(int fd, unsigned char *packet, int size, int rw);
 
 int wildcard_match(const char* wildcard, const char* match);
+int wildcard_matchn(const char* wildcard, const char* match, int num);
 
 /* log.c */
 void die(char *message, char *arg1, int exit_code);
@@ -1295,6 +1296,7 @@ void tomato_helper(time_t now);
 #ifdef HAVE_LEASEFILE_EXPIRE //originally TOMATO option
 void flush_lease_file(time_t now);
 #endif
+void send_newaddr(void);
 void send_alarm(time_t event, time_t now);
 void send_event(int fd, int event, int data, char *msg);
 void clear_cache_and_reload(time_t now);
@@ -1303,7 +1305,7 @@ void poll_resolv(int force, int do_reload, time_t now);
 /* netlink.c */
 #ifdef HAVE_LINUX_NETWORK
 void netlink_init(void);
-void netlink_multicast(time_t now);
+void netlink_multicast(void);
 #endif
 
 /* bpf.c */
@@ -1312,7 +1314,7 @@ void init_bpf(void);
 void send_via_bpf(struct dhcp_packet *mess, size_t len,
 		  struct in_addr iface_addr, struct ifreq *ifr);
 void route_init(void);
-void route_sock(time_t now);
+void route_sock(void);
 #endif
 
 /* bpf.c or netlink.c */

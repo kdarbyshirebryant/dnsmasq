@@ -956,10 +956,10 @@ int main (int argc, char **argv)
 
 #if defined(HAVE_LINUX_NETWORK)
       if (FD_ISSET(daemon->netlinkfd, &rset))
-	netlink_multicast(now);
+	netlink_multicast();
 #elif defined(HAVE_BSD_NETWORK)
       if (FD_ISSET(daemon->routefd, &rset))
-	route_sock(now);
+	route_sock();
 #endif
 
       /* Check for changes to resolv files once per second max. */
@@ -1074,6 +1074,11 @@ void send_alarm(time_t event, time_t now)
       else 
 	alarm((unsigned)difftime(event, now)); 
     }
+}
+
+void send_newaddr(void)
+{
+  send_event(pipewrite, EVENT_NEWADDR, 0, NULL);
 }
 
 void send_event(int fd, int event, int data, char *msg)
@@ -1282,6 +1287,10 @@ static void async_event(int pipe, time_t now)
 	if (daemon->dhcp || daemon->dhcp6)
 		flush_lease_file(now);
 #endif
+	break;
+
+      case EVENT_NEWADDR:
+	newaddress(now);
 	break;
 	
       case EVENT_TERM:

@@ -4,6 +4,12 @@ dnsmasq (2.71-1) unstable; urgency=low
    * Fix 100% CPU-usage bug when dnsmasq started with cachesize 
      set to zero. (LP: #1314697)
 	
+dnsmasq (2.71-1) unstable; urgency=low
+
+   * New upstream.
+   * Fix 100% CPU-usage bug when dnsmasq started with cachesize
+     set to zero. (LP: #1314697)
+
  -- Simon Kelley <simon@thekelleys.org.uk>  Fri, 16 May 2014 20:17:10 +0000
 
 dnsmasq (2.70-3) unstable; urgency=medium
@@ -16,7 +22,7 @@ dnsmasq (2.70-3) unstable; urgency=medium
      postinst/postrm exactly as dh_systemd would, add dependency on
      init-system-helpers. Closes: #724602
 
- -- Simon Kelley <simon@thekelleys.org.uk> Sun, 11 May 2014 17:45:21 +0000
+ -- Simon Kelley <simon@thekelleys.org.uk>  Sun, 11 May 2014 17:45:21 +0000
 
 dnsmasq (2.70-2) unstable; urgency=low
 
