@@ -166,6 +166,7 @@ struct event_desc {
 #define EVENT_TFTP_ERR  20
 #define EVENT_INIT      21
 #define EVENT_NEWADDR   22
+#define EVENT_NEWROUTE  23
 
 /* Exit codes. */
 #define EC_GOOD        0
@@ -640,6 +641,8 @@ struct dhcp_lease {
   unsigned char *extradata;
   unsigned int extradata_len, extradata_size;
   int last_interface;
+  int new_interface;     /* save possible originated interface */
+  int new_prefixlen;     /* and its prefix length */
 #ifdef HAVE_DHCP6
   struct in6_addr addr6;
   int iaid;
@@ -1131,6 +1134,7 @@ int sa_len(union mysockaddr *addr);
 int sockaddr_isequal(union mysockaddr *s1, union mysockaddr *s2);
 int hostname_isequal(const char *a, const char *b);
 time_t dnsmasq_time(void);
+int netmask_length(struct in_addr mask);
 int is_same_net(struct in_addr a, struct in_addr b, struct in_addr mask);
 #ifdef HAVE_IPV6
 int is_same_net6(struct in6_addr *a, struct in6_addr *b, int prefixlen);
@@ -1183,6 +1187,7 @@ struct frec *get_new_frec(time_t now, int *wait, int force);
 int send_from(int fd, int nowild, char *packet, size_t len, 
 	       union mysockaddr *to, struct all_addr *source,
 	       unsigned int iface);
+void resend_query();
 
 /* network.c */
 int indextoname(int fd, int index, char *name);
@@ -1290,17 +1295,18 @@ unsigned char *extended_hwaddr(int hwtype, int hwlen, unsigned char *hwaddr,
 int make_icmp_sock(void);
 int icmp_ping(struct in_addr addr);
 #endif
+void send_newaddr(void);
+void queue_event(int event);
+void send_alarm(time_t event, time_t now);
+void send_event(int fd, int event, int data, char *msg);
+void clear_cache_and_reload(time_t now);
+
 #ifdef HAVE_TOMATO
 void tomato_helper(time_t now);
 #endif
 #ifdef HAVE_LEASEFILE_EXPIRE //originally TOMATO option
 void flush_lease_file(time_t now);
 #endif
-void send_newaddr(void);
-void send_alarm(time_t event, time_t now);
-void send_event(int fd, int event, int data, char *msg);
-void clear_cache_and_reload(time_t now);
-void poll_resolv(int force, int do_reload, time_t now);
 
 /* netlink.c */
 #ifdef HAVE_LINUX_NETWORK
