@@ -1011,6 +1011,9 @@ extern struct daemon {
   int dhcpfd, helperfd, pxefd; 
 #if defined(HAVE_LINUX_NETWORK)
   int netlinkfd;
+#if defined(HAVE_INOTIFY)
+  int inotifyfd;
+#endif
 #elif defined(HAVE_BSD_NETWORK)
   int dhcp_raw_fd, dhcp_icmp_fd, routefd;
 #endif

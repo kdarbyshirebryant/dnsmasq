@@ -1005,6 +1005,7 @@ int main (int argc, char **argv)
       
       if (FD_ISSET(piperead, &rset))
 	async_event(piperead, now);
+#endif
       
 #ifdef HAVE_DBUS
       /* if we didn't create a DBus connection, retry now. */ 
