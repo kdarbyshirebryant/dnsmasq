@@ -554,7 +554,7 @@ struct hostsfile {
   struct hostsfile *next;
   int flags;
   char *fname;
-#ifdef HAVE_LINUX_NETWORK
+#ifdef HAVE_INOTIFY
   int wd; /* inotify watch descriptor */
 #endif
   unsigned int index; /* matches to cache entries for logging */
@@ -1492,7 +1492,7 @@ int detect_loop(char *query, int type);
 #endif
 
 /* inotify.c */
-#ifdef HAVE_LINUX_NETWORK
+#ifdef HAVE_INOTIFY
 void inotify_dnsmasq_init();
 int inotify_check(time_t now);
 #  ifdef HAVE_DHCP

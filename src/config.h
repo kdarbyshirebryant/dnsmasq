@@ -119,6 +119,8 @@ HAVE_DNSSEC
 HAVE_LOOP
    include functionality to probe for and remove DNS forwarding loops.
 
+HAVE_INOTIFY
+   use inotify instead of polling on linux
 
 NO_IPV6
 NO_TFTP
@@ -161,6 +163,7 @@ RESOLVFILE
 #define HAVE_AUTH
 #define HAVE_IPSET 
 #define HAVE_LOOP
+#define HAVE_INOTIFY
 
 /* Build options which require external libraries.
    
@@ -361,6 +364,10 @@ HAVE_SOCKADDR_SA_LEN
 
 #ifdef HAVE_TOMATO
 #define HAVE_LEASEFILE_EXPIRE
+#endif
+
+#if defined(NO_INOTIFY) || !defined(HAVE_LINUX_NETWORK)
+#undef HAVE_INOTIFY
 #endif
 
 /* Define a string indicating which options are in use.
