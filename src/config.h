@@ -120,7 +120,7 @@ HAVE_LOOP
    include functionality to probe for and remove DNS forwarding loops.
 
 HAVE_INOTIFY
-   use inotify instead of polling on linux
+   use the Linux inotify facility to efficiently re-read configuration files.
 
 NO_IPV6
 NO_TFTP
@@ -129,6 +129,7 @@ NO_DHCP6
 NO_SCRIPT
 NO_LARGEFILE
 NO_AUTH
+NO_INOTIFY
    these are avilable to explictly disable compile time options which would 
    otherwise be enabled automatically (HAVE_IPV6, >2Gb file sizes) or 
    which are enabled  by default in the distributed source tree. Building dnsmasq
@@ -163,7 +164,6 @@ RESOLVFILE
 #define HAVE_AUTH
 #define HAVE_IPSET 
 #define HAVE_LOOP
-#define HAVE_INOTIFY
 
 /* Build options which require external libraries.
    
@@ -366,8 +366,8 @@ HAVE_SOCKADDR_SA_LEN
 #define HAVE_LEASEFILE_EXPIRE
 #endif
 
-#if defined(NO_INOTIFY) || !defined(HAVE_LINUX_NETWORK)
-#undef HAVE_INOTIFY
+#if defined (HAVE_LINUX_NETWORK) && !defined(NO_INOTIFY)
+#define HAVE_INOTIFY
 #endif
 
 /* Define a string indicating which options are in use.
@@ -450,7 +450,11 @@ static char *compile_opts =
 #ifndef HAVE_LOOP
 "no-"
 #endif
-"loop-detect";
+"loop-detect "
+#ifndef HAVE_INOTIFY
+"no-"
+#endif
+"inotify";
 
 
 #endif

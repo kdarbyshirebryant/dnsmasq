@@ -7,6 +7,12 @@ version 2.73
 	    DNSSEC in use, the original rationale for this has long gone.
 	    Thanks to Anders Kaseorg for spotting this.
 
+	    Use inotify for checking on updates to /etc/resolv.conf and
+	    friends under Linux. This fixes race conditions when the files are 
+	    updated rapidly and saves CPU by noy polling. To build
+	    a binary that runs on old Linux kernels without inotify,
+	    use make COPTS=-DNO_INOTIFY
+
 	    Fix breakage of --domain=<domain>,<subnet>,local - only reverse
 	    queries were intercepted. THis appears to have been broken 
 	    since 2.69. Thanks to Josh Stone for finding the bug.
