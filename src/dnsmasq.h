@@ -547,6 +547,7 @@ struct resolvc {
 #ifdef HAVE_INOTIFY
   int wd; /* inotify watch descriptor */
   char *file; /* pointer to file part if path */
+#endif
 };
 
 /* adn-hosts parms from command-line (also dhcp-hostsfile and dhcp-optsfile and dhcp-hostsdir*/
@@ -1020,7 +1021,6 @@ extern struct daemon {
 #endif
 #if defined(HAVE_LINUX_NETWORK)
   int netlinkfd;
-#endif
 #elif defined(HAVE_BSD_NETWORK)
   int dhcp_raw_fd, dhcp_icmp_fd, routefd;
 #endif

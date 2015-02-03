@@ -911,7 +911,7 @@ int main (int argc, char **argv)
 	  bump_maxfd(daemon->icmp6fd, &maxfd); 
 	}
 #endif
-    
+
 #ifdef HAVE_INOTIFY
       if (daemon->inotifyfd != -1)
 	{
