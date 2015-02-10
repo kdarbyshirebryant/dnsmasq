@@ -443,10 +443,6 @@ static char *compile_opts =
 "no-"
 #endif
 "DNSSEC "
-#ifndef HAVE_INOTIFY
-"no-"
-#endif
-"INOTIFY "
 #ifndef HAVE_LOOP
 "no-"
 #endif
@@ -458,6 +454,3 @@ static char *compile_opts =
 
 
 #endif
-
-
-
