@@ -20,7 +20,7 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 		 char *name, int isExtract, int extrabytes)
 {
   unsigned char *cp = (unsigned char *)name, *p = *pp, *p1 = NULL;
-  unsigned int j, l, hops = 0;
+  unsigned int j, l, namelen = 0, hops = 0;
   int retvalue = 1;
   
   if (isExtract)
@@ -94,9 +94,15 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 	    count = 256;
 	  digs = ((count-1)>>2)+1;
 	  
-	  /* output is \[x<hex>/siz]. which is digs+9 chars */
-	  if (cp - (unsigned char *)name + digs + 9 >= MAXDNAME)
+	  /* output is \[x<hex>/siz]. which is digs+6/7/8 chars */
+	  namelen += digs+6;
+	  if (count > 9)
+	    namelen++;
+	  if (count > 99)
+	    namelen++;
+	  if (namelen+1 >= MAXDNAME)
 	    return 0;
+
 	  if (!CHECK_LEN(header, p, plen, (count-1)>>3))
 	    return 0;
 
@@ -119,7 +125,8 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 	}
       else 
 	{ /* label_type = 0 -> label. */
-	  if (cp - (unsigned char *)name + l + 1 >= MAXDNAME)
+	  namelen += l;
+	  if (namelen+1 >= MAXDNAME)
 	    return 0;
 	  if (!CHECK_LEN(header, p, plen, l))
 	    return 0;
@@ -128,8 +135,21 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 	    if (isExtract)
 	      {
 		unsigned char c = *p;
-		if (isascii(c) && !iscntrl(c) && c != '.')
-		  *cp++ = *p;
+#ifdef HAVE_DNSSEC
+		if (option_bool(OPT_DNSSEC_VALID))
+		  {
+		    if (c == 0 || c == '.' || c == NAME_ESCAPE)
+		      {
+			*cp++ = NAME_ESCAPE;
+			*cp++ = c+1;
+		      }
+		    else
+		      *cp++ = c; 
+		  }
+		else
+#endif
+		if (c != 0 && c != '.')
+		  *cp++ = c;
 		else
 		  return 0;
 	      }
@@ -144,9 +164,14 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 		    cp++;
 		    if (c1 >= 'A' && c1 <= 'Z')
 		      c1 += 'a' - 'A';
+#ifdef HAVE_DNSSEC
+		    if (option_bool(OPT_DNSSEC_VALID) && c1 == NAME_ESCAPE)
+		      c1 = (*cp++)-1;
+#endif
+		    
 		    if (c2 >= 'A' && c2 <= 'Z')
 		      c2 += 'a' - 'A';
-		    
+		     
 		    if (c1 != c2)
 		      retvalue =  2;
 		  }
@@ -1198,7 +1223,10 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
 size_t setup_reply(struct dns_header *header, size_t qlen,
 		struct all_addr *addrp, unsigned int flags, unsigned long ttl)
 {
-  unsigned char *p = skip_questions(header, qlen);
+  unsigned char *p;
+
+  if (!(p = skip_questions(header, qlen)))
+    return 0;
   
   /* clear authoritative and truncated flags, set QR flag */
   header->hb3 = (header->hb3 & ~(HB3_AA | HB3_TC)) | HB3_QR;
@@ -1214,7 +1242,7 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
     SET_RCODE(header, NOERROR); /* empty domain */
   else if (flags == F_NXDOMAIN)
     SET_RCODE(header, NXDOMAIN);
-  else if (p && flags == F_IPV4)
+  else if (flags == F_IPV4)
     { /* we know the address */
       SET_RCODE(header, NOERROR);
       header->ancount = htons(1);
@@ -1222,7 +1250,7 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
       add_resource_record(header, NULL, NULL, sizeof(struct dns_header), &p, ttl, NULL, T_A, C_IN, "4", addrp);
     }
 #ifdef HAVE_IPV6
-  else if (p && flags == F_IPV6)
+  else if (flags == F_IPV6)
     {
       SET_RCODE(header, NOERROR);
       header->ancount = htons(1);
@@ -1579,6 +1607,11 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
             
       GETSHORT(qtype, p); 
       GETSHORT(qclass, p);
+
+      /* Don't filter RRSIGS from answers to ANY queries, even if do-bit
+	 not set. */
+      if (qtype == T_ANY)
+	*do_bit = 1;
 
       ans = 0; /* have we answered this question */
       
