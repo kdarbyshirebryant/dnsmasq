@@ -420,7 +420,7 @@ struct dhcp_context *address6_allocate(struct dhcp_context *context,  unsigned c
     j = rand64();
   else
     for (j = iaid, i = 0; i < clid_len; i++)
-      j += clid[i] + (j << 6) + (j << 16) - j;
+      j = clid[i] + (j << 6) + (j << 16) - j;
   
   for (pass = 0; pass <= plain_range ? 1 : 0; pass++)
     for (c = context; c; c = c->current)
@@ -434,7 +434,16 @@ struct dhcp_context *address6_allocate(struct dhcp_context *context,  unsigned c
 	    /* seed is largest extant lease addr in this context */
 	    start = lease_find_max_addr6(c) + serial;
 	  else
-	    start = addr6part(&c->start6) + ((j + c->addr_epoch) % (1 + addr6part(&c->end6) - addr6part(&c->start6)));
+	    {
+	      u64 range = 1 + addr6part(&c->end6) - addr6part(&c->start6);
+	      u64 offset = j + c->addr_epoch;
+
+	      /* don't divide by zero if range is whole 2^64 */
+	      if (range != 0)
+		offset = offset % range;
+
+	      start = addr6part(&c->start6) + offset;
+	    }
 
 	  /* iterate until we find a free address. */
 	  addr = start;

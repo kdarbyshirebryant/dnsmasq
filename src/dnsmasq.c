@@ -257,7 +257,13 @@ int main (int argc, char **argv)
   if (option_bool(OPT_LOOP_DETECT))
     die(_("loop detection not available: set HAVE_LOOP in src/config.h"), NULL, EC_BADCONF);
 #endif
-  
+
+  if (daemon->max_port != MAX_PORT && daemon->min_port == 0)
+    daemon->min_port = 1024u;
+
+  if (daemon->max_port < daemon->min_port)
+    die(_("max_port cannot be smaller than min_port"), NULL, EC_BADCONF);
+
   now = dnsmasq_time();
 
   /* Create a serial at startup if not configured. */
@@ -292,10 +298,10 @@ int main (int argc, char **argv)
      creating any file descriptors which shouldn't be leaked
      to the lease-script init process. We need to call common_init
      before lease_init to allocate buffers it uses.
-     The script subsystrm relies on DHCP buffers, hence the last two
+     The script subsystem relies on DHCP buffers, hence the last two
      conditions below. */  
   if (daemon->dhcp || daemon->doing_dhcp6 || daemon->relay4 || 
-      daemon->relay6 || option_bool(OPT_TFTP) || option_bool(OPT_DNS_CLIENT))
+      daemon->relay6 || option_bool(OPT_TFTP) || option_bool(OPT_SCRIPT_ARP))
     {
       dhcp_common_init();
       if (daemon->dhcp || daemon->doing_dhcp6)
@@ -593,16 +599,19 @@ int main (int argc, char **argv)
      {       
        /* open  stdout etc to /dev/null */
        int nullfd = open("/dev/null", O_RDWR);
-       dup2(nullfd, STDOUT_FILENO);
-       dup2(nullfd, STDERR_FILENO);
-       dup2(nullfd, STDIN_FILENO);
-       close(nullfd);
+       if (nullfd != -1)
+	 {
+	   dup2(nullfd, STDOUT_FILENO);
+	   dup2(nullfd, STDERR_FILENO);
+	   dup2(nullfd, STDIN_FILENO);
+	   close(nullfd);
+	 }
      }
    
    /* if we are to run scripts, we need to fork a helper before dropping root. */
   daemon->helperfd = -1;
 #ifdef HAVE_SCRIPT 
-  if ((daemon->dhcp || daemon->dhcp6 || option_bool(OPT_TFTP) || option_bool(OPT_DNS_CLIENT)) && 
+  if ((daemon->dhcp || daemon->dhcp6 || option_bool(OPT_TFTP) || option_bool(OPT_SCRIPT_ARP)) && 
       (daemon->lease_change_command || daemon->luascript))
       daemon->helperfd = create_helper(pipewrite, err_pipe[1], script_uid, script_gid, max_fd);
 #endif
@@ -969,6 +978,9 @@ int main (int argc, char **argv)
       while (helper_buf_empty() && do_script_run(now)); 
 #    endif
 
+      /* Refresh cache */
+      if (option_bool(OPT_SCRIPT_ARP))
+	find_mac(NULL, NULL, 0, now);
       while (helper_buf_empty() && do_arp_script_run());
 
 #    ifdef HAVE_TFTP

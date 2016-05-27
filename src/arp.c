@@ -44,6 +44,11 @@ static int filter_mac(int family, char *addrp, char *mac, size_t maclen, void *p
   if (maclen > DHCP_CHADDR_MAX)
     return 1;
 
+#ifndef HAVE_IPV6
+  if (family != AF_INET)
+    return 1;
+#endif
+
   /* Look for existing entry */
   for (arp = arps; arp; arp = arp->next)
     {
@@ -117,30 +122,36 @@ int find_mac(union mysockaddr *addr, unsigned char *mac, int lazy, time_t now)
   
   /* If the database is less then INTERVAL old, look in there */
   if (difftime(now, last) < INTERVAL)
-    for (arp = arps; arp; arp = arp->next)
-      {
-	if (addr->sa.sa_family == arp->family)
-	  {
-	    if (arp->addr.addr.addr4.s_addr != addr->in.sin_addr.s_addr)
-	      continue;
-	  }
+    {
+      /* addr == NULL -> just make cache up-to-date */
+      if (!addr)
+	return 0;
+
+      for (arp = arps; arp; arp = arp->next)
+	{
+	  if (addr->sa.sa_family != arp->family)
+	    continue;
+	    
+	  if (arp->family == AF_INET &&
+	      arp->addr.addr.addr4.s_addr != addr->in.sin_addr.s_addr)
+	    continue;
+	    
 #ifdef HAVE_IPV6
-	else
-	  {
-	    if (!IN6_ARE_ADDR_EQUAL(&arp->addr.addr.addr6, &addr->in6.sin6_addr))
-	      continue;
-	  }
+	  if (arp->family == AF_INET6 && 
+	      !IN6_ARE_ADDR_EQUAL(&arp->addr.addr.addr6, &addr->in6.sin6_addr))
+	    continue;
 #endif
-	
-	/* Only accept positive entries unless in lazy mode. */
-	if (arp->status != ARP_EMPTY || lazy || updated)
-	  {
-	    if (mac && arp->hwlen != 0)
-	      memcpy(mac, arp->hwaddr, arp->hwlen);
-	    return arp->hwlen;
-	  }
-      }
-  
+	  
+	  /* Only accept positive entries unless in lazy mode. */
+	  if (arp->status != ARP_EMPTY || lazy || updated)
+	    {
+	      if (mac && arp->hwlen != 0)
+		memcpy(mac, arp->hwaddr, arp->hwlen);
+	      return arp->hwlen;
+	    }
+	}
+    }
+
   /* Not found, try the kernel */
   if (!updated)
      {
@@ -209,8 +220,8 @@ int do_arp_script_run(void)
   if (old)
     {
 #ifdef HAVE_SCRIPT
-      if (option_bool(OPT_DNS_CLIENT))
-	queue_arp(ACTION_ARP_OLD, old->hwaddr, old->hwlen, old->family, &old->addr);
+      if (option_bool(OPT_SCRIPT_ARP))
+	queue_arp(ACTION_ARP_DEL, old->hwaddr, old->hwlen, old->family, &old->addr);
 #endif
       arp = old;
       old = arp->next;
@@ -223,7 +234,7 @@ int do_arp_script_run(void)
     if (arp->status == ARP_NEW)
       {
 #ifdef HAVE_SCRIPT
-	if (option_bool(OPT_DNS_CLIENT))
+	if (option_bool(OPT_SCRIPT_ARP))
 	  queue_arp(ACTION_ARP, arp->hwaddr, arp->hwlen, arp->family, &arp->addr);
 #endif
 	arp->status = ARP_FOUND;
