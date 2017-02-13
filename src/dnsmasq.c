@@ -32,6 +32,17 @@ static void fatal_event(struct event_desc *ev, char *msg);
 static int read_event(int fd, struct event_desc *evp, char **msg);
 static void poll_resolv(int force, int do_reload, time_t now);
 
+static const char *rfc6303list[] = {
+	"d.f.ip6.arpa",
+	"8.e.f.ip6.arpa",
+	"9.e.f.ip6.arpa",
+	"a.e.f.ip6.arpa",
+	"b.e.f.ip6.arpa",
+	"8.b.d.0.1.0.0.2.ip6.arpa",
+	"0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa",
+	"1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa",
+	NULL };
+
 int main (int argc, char **argv)
 {
   int bind_fallback = 0;
@@ -711,6 +722,24 @@ int main (int argc, char **argv)
 	}
     }
 #endif
+
+  if (option_bool(OPT_BOGUSPRIV))
+    {
+      struct server *serv = NULL, *newlist = daemon->servers;
+      const char **ptr = rfc6303list;
+
+      while(*ptr) {
+          serv = safe_malloc(sizeof(struct server));
+          serv->next = newlist;
+          newlist = serv;
+          serv->domain = (char *)*ptr;
+          serv->flags = SERV_HAS_DOMAIN | SERV_NO_ADDR;
+	  ptr++;
+	}
+
+	if (serv)
+		daemon->servers = serv;
+    }
 
   if (daemon->port == 0)
     my_syslog(LOG_INFO, _("started, version %s DNS disabled"), VERSION);
