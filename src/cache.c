@@ -354,8 +354,6 @@ static struct crec *cache_scan_free(char *name, union all_addr *addr, unsigned s
  
   struct crec *crecp, **up;
 
-  (void)class;
-  
   if (flags & F_FORWARD)
     {
       for (up = hash_bucket(name), crecp = *up; crecp; crecp = crecp->hash_next)
@@ -395,6 +393,8 @@ static struct crec *cache_scan_free(char *name, union all_addr *addr, unsigned s
 		  cache_free(crecp);
 		  continue;
 		}
+#else
+	      (void)class;
 #endif
 	    }
 
