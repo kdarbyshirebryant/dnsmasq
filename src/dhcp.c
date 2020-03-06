@@ -479,7 +479,7 @@ static int check_listen_addrs(struct in_addr local, int if_index, char *label,
   struct match_param *param = vparam;
   struct iname *tmp;
 
-  (void) label;
+  (void)label;
 
   if (if_index == param->ind)
     {
