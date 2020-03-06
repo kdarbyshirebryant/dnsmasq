@@ -1635,12 +1635,12 @@ static void poll_resolv(int force, int do_reload, time_t now)
 
 void clear_cache_and_reload(time_t now)
 {
-  (void)now;
-
   if (daemon->port != 0)
     cache_reload();
   
-#ifdef HAVE_DHCP
+#ifndef HAVE_DHCP
+  (void)now;
+#else
   if (daemon->dhcp || daemon->doing_dhcp6)
     {
       if (option_bool(OPT_ETHERS))
@@ -1860,7 +1860,6 @@ static void check_dns_listeners(time_t now)
 		    if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
 		      {
 			char a;
-			(void)a; /* suppress potential unused warning */
 
 			daemon->tcp_pids[i] = p;
 			daemon->tcp_pipes[i] = pipefd[0];
@@ -1879,6 +1878,8 @@ static void check_dns_listeners(time_t now)
 			   is sent by the child after it has closed the
 			   netlink socket. */
 			retry_send(read(pipefd[0], &a, 1));
+#else
+			(void)a; /* suppress unused warning */
 #endif
 			break;
 		      }
@@ -1912,7 +1913,7 @@ static void check_dns_listeners(time_t now)
 	      if (!option_bool(OPT_DEBUG))
 		{
 		  char a = 0;
-		  (void)a; /* suppress potential unused warning */
+
 		  alarm(CHILD_LIFETIME);
 		  close(pipefd[0]); /* close read end in child. */
 		  daemon->pipe_to_parent = pipefd[1];
@@ -1920,6 +1921,8 @@ static void check_dns_listeners(time_t now)
 		  /* See comment above re netlink socket. */
 		  close(daemon->netlinkfd);
 		  retry_send(write(pipefd[1], &a, 1));
+#else
+		  (void)a; /* suppress unused warning */
 #endif
 		}
 
