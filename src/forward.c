@@ -262,10 +262,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 #else
   unsigned int crc = questions_crc(header, plen, daemon->namebuff);
   void *hash = &crc;
+  (void)do_bit;
 #endif
   unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
   unsigned char *oph = find_pseudoheader(header, plen, NULL, NULL, NULL, NULL);
-  (void)do_bit;
 
   /* may be no servers available. */
   if (forward || (hash && (forward = lookup_frec_by_sender(ntohs(header->id), udpaddr, hash))))
@@ -580,10 +580,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   int munged = 0, is_sign;
   unsigned int rcode = RCODE(header);
   size_t plen; 
-  
-  (void)ad_reqd;
-  (void)do_bit;
-  (void)bogusanswer;
 
 #ifdef HAVE_IPSET
   if (daemon->ipsets && extract_request(header, n, daemon->namebuff, NULL))
@@ -617,7 +613,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  my_syslog(LOG_WARNING, _("discarding DNS reply: subnet option mismatch"));
 	  return 0;
 	}
-      
       if (!is_sign)
 	{
 	  if (added_pheader)
@@ -651,6 +646,8 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 		  sizep -= 2;
 		  PUTSHORT(flags, sizep);
 		}
+#else
+	      (void)do_bit;
 #endif
 	    }
 	}
@@ -737,6 +734,9 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       if (!do_bit)
 	n = rrfilter(header, n, 1);
     }
+#else
+  (void)ad_reqd;
+  (void)bogusanswer;
 #endif
 
   /* do this after extract_addresses. Ensure NODATA reply and remove
