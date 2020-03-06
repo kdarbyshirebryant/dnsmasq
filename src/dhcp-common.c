@@ -686,9 +686,9 @@ int lookup_dhcp_opt(int prot, char *name)
   const struct opttab_t *t;
   int i;
 
+#ifndef HAVE_DHCP6
   (void)prot;
-
-#ifdef HAVE_DHCP6
+#else
   if (prot == AF_INET6)
     t = opttab6;
   else
@@ -707,9 +707,9 @@ int lookup_dhcp_len(int prot, int val)
   const struct opttab_t *t;
   int i;
 
+#ifndef HAVE_DHCP6
   (void)prot;
-
-#ifdef HAVE_DHCP6
+#else
   if (prot == AF_INET6)
     t = opttab6;
   else
