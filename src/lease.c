@@ -393,9 +393,9 @@ static int find_interface_v4(struct in_addr local, int if_index, char *label,
   struct dhcp_lease *lease;
   int prefix = netmask_length(netmask);
 
-  (void) label;
-  (void) broadcast;
-  (void) vparam;
+  (void)label;
+  (void)broadcast;
+  (void)vparam;
 
   for (lease = leases; lease; lease = lease->next)
     if (!(lease->flags & (LEASE_TA | LEASE_NA)) &&
@@ -869,10 +869,9 @@ void lease_set_hwaddr(struct dhcp_lease *lease, const unsigned char *hwaddr,
 #ifdef HAVE_DHCP6
   int change = force;
   lease->flags |= LEASE_HAVE_HWADDR;
-#endif
-
+#else
   (void)force;
-  (void)now;
+#endif
 
   if (hw_len != lease->hwaddr_len ||
       hw_type != lease->hwaddr_type || 
@@ -921,6 +920,8 @@ void lease_set_hwaddr(struct dhcp_lease *lease, const unsigned char *hwaddr,
 #ifdef HAVE_DHCP6
   if (change)
     slaac_add_addrs(lease, now, force);
+#else
+  (void)now;
 #endif
 }
 
@@ -1041,8 +1042,6 @@ void lease_set_hostname(struct dhcp_lease *lease, const char *name, int auth, ch
 
 void lease_set_interface(struct dhcp_lease *lease, int interface, time_t now)
 {
-  (void)now;
-
   if (lease->last_interface == interface)
     return;
 
@@ -1051,6 +1050,8 @@ void lease_set_interface(struct dhcp_lease *lease, int interface, time_t now)
 
 #ifdef HAVE_DHCP6
   slaac_add_addrs(lease, now, 0);
+#else
+  (void)now;
 #endif
 }
 
@@ -1071,7 +1072,6 @@ int do_script_run(time_t now)
 {
   struct dhcp_lease *lease;
 
-  (void)now;
 
 #ifdef HAVE_DBUS
   /* If we're going to be sending DBus signals, but the connection is not yet up,
@@ -1107,6 +1107,8 @@ int do_script_run(time_t now)
 	  kill_name(lease);
 #ifdef HAVE_SCRIPT
 	  queue_script(ACTION_DEL, lease, lease->old_hostname, now);
+#else
+	  (void)now;
 #endif
 #ifdef HAVE_DBUS
 	  emit_dbus_signal(ACTION_DEL, lease, lease->old_hostname);
