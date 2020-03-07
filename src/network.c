@@ -785,11 +785,12 @@ int set_ipv6pktinfo(int fd)
 /* Find the interface on which a TCP connection arrived, if possible, or zero otherwise. */
 int tcp_interface(int fd, int af)
 { 
-  (void)fd; /* suppress potential unused warning */
-  (void)af; /* suppress potential unused warning */
   int if_index = 0;
 
-#ifdef HAVE_LINUX_NETWORK
+#ifndef HAVE_LINUX_NETWORK
+  (void)fd;
+  (void)af;
+#else
   int opt = 1;
   struct cmsghdr *cmptr;
   struct msghdr msg;
@@ -862,15 +863,15 @@ static struct listener *create_listeners(union mysockaddr *addr, int do_tftp, in
   struct listener *l = NULL;
   int fd = -1, tcpfd = -1, tftpfd = -1;
 
-  (void)do_tftp;
-
   if (daemon->port != 0)
     {
       fd = make_sock(addr, SOCK_DGRAM, dienow);
       tcpfd = make_sock(addr, SOCK_STREAM, dienow);
     }
   
-#ifdef HAVE_TFTP
+#ifndef HAVE_TFTP
+  (void)do_tftp;
+#else
   if (do_tftp)
     {
       if (addr->sa.sa_family == AF_INET)
@@ -1189,8 +1190,9 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifind
 #endif
     }
 
-  (void)intname; /* suppress potential unused warning */
-#if defined(SO_BINDTODEVICE)
+#if !defined(SO_BINDTODEVICE)
+  (void)intname;
+#else
   if (intname[0] != 0 &&
       setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, intname, IF_NAMESIZE) == -1)
     return 0;
@@ -1666,8 +1668,6 @@ int reload_servers(char *fname)
 /* Called when addresses are added or deleted from an interface */
 void newaddress(time_t now)
 {
-  (void)now;
-  
   if (option_bool(OPT_CLEVERBIND) || option_bool(OPT_LOCAL_SERVICE) ||
       daemon->doing_dhcp6 || daemon->relay6 || daemon->doing_ra)
     enumerate_interfaces(0);
@@ -1675,7 +1675,9 @@ void newaddress(time_t now)
   if (option_bool(OPT_CLEVERBIND))
     create_bound_listeners(0);
   
-#ifdef HAVE_DHCP6
+#ifndef HAVE_DHCP6
+  (void)now;
+#else
   if (daemon->doing_dhcp6 || daemon->relay6 || daemon->doing_ra)
     join_multicast(0);
   
