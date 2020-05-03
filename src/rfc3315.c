@@ -48,7 +48,7 @@ static int build_ia(struct state *state, int *t1cntr);
 static void end_ia(int t1cntr, unsigned int min_time, int do_fuzz);
 static void mark_context_used(struct state *state, struct in6_addr *addr);
 static void mark_config_used(struct dhcp_context *context, struct in6_addr *addr);
-static int check_address(struct state *state, struct in6_addr *addr);
+static int check_address(struct state *state, struct dhcp_config *config, struct in6_addr *addr);
 static int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr, struct state *state, time_t now);
 static struct addrlist *config_implies(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr);
 static void add_address(struct state *state, struct dhcp_context *context, unsigned int lease_time, void *ia_option, 
@@ -688,8 +688,13 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		      }
 		    else if (!(c = address6_available(state->context, &req_addr, solicit_tags, plain_range)))
 		      continue; /* not an address we're allowed */
-		    else if (!check_address(state, &req_addr))
+		    else if (!check_address(state, config, &req_addr))
 		      continue; /* address leased elsewhere */
+		    else if (state->mac_len && config &&
+			     config_has_mac(config, state->mac, state->mac_len, state->mac_type) &&
+			     match_netid(c->filter, solicit_tags, plain_range) &&
+			     !config_implies(config, c, &req_addr))
+		      continue; /* another static address is configured */
 		    
 		    /* add address to output packet */
 		    add_address(state, c, lease_time, ia_option, &min_time, &req_addr, now);
@@ -701,7 +706,10 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	    
 	    /* Suggest configured address(es) */
 	    for (c = state->context; c; c = c->current) 
-	      if (!(c->flags & CONTEXT_CONF_USED) &&
+	      if ((!(c->flags & CONTEXT_CONF_USED) ||
+		   (state->mac_len && config &&
+		    config_has_mac(config, state->mac, state->mac_len, state->mac_type)
+		   )) &&
 		  match_netid(c->filter, solicit_tags, plain_range) &&
 		  config_valid(config, c, &addr, state, now))
 		{
@@ -725,6 +733,11 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		req_addr = ltmp->addr6;
 		if ((c = address6_available(state->context, &req_addr, solicit_tags, plain_range)))
 		  {
+		    if (state->mac_len && config &&
+			config_has_mac(config, state->mac, state->mac_len, state->mac_type) &&
+			match_netid(c->filter, solicit_tags, plain_range) &&
+			!config_implies(config, c, &req_addr))
+		      continue; /* skip this lease because another static address is configured */
 		    add_address(state, c, c->lease_time, NULL, &min_time, &req_addr, now);
 		    mark_context_used(state, &req_addr);
 		    get_context_tag(state, c);
@@ -859,7 +872,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 			put_opt6_string(_("address unavailable"));
 			end_opt6(o1);
 		      }
-		    else if (!check_address(state, &req_addr))
+		    else if (!check_address(state, config, &req_addr))
 		      {
 			/* Address leased to another DUID/IAID */
 			o1 = new_opt6(OPTION6_STATUS_CODE);
@@ -975,6 +988,16 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		  {
 		    unsigned int lease_time;
 
+		    /* check if another static address is preferred */
+		    if (state->mac_len && config &&
+		        config_has_mac(config, state->mac, state->mac_len, state->mac_type) &&
+		        !config_implies(config, this_context, &req_addr))
+		      {
+			preferred_time = valid_time = 0;
+			message = _("deprecated");
+		      }
+		    else
+		      {
 		    get_context_tag(state, this_context);
 		    
 		    if (config_implies(config, this_context, &req_addr) && have_config(config, CONFIG_TIME))
@@ -1000,6 +1023,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		    
 		    if (preferred_time == 0)
 		      message = _("deprecated");
+		      }
 		  }
 		else
 		  {
@@ -1046,11 +1070,22 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		 ia_option = opt6_find(opt6_next(ia_option, ia_end), ia_end, OPTION6_IAADDR, 24))
 	      {
 		struct in6_addr req_addr;
+		struct dhcp_context *c;
+		int config_addr_ok = 1;
 
 		/* alignment */
 		memcpy(&req_addr, opt6_ptr(ia_option, 0), IN6ADDRSZ);
+
+		c = address6_valid(state->context, &req_addr, tagif, 1);
+
+		if (c && state->mac_len && config &&
+		    config_has_mac(config, state->mac, state->mac_len, state->mac_type) &&
+		    !config_implies(config, c, &req_addr))
+		  {
+		    config_addr_ok = 0;
+		  }
 		
-		if (!address6_valid(state->context, &req_addr, tagif, 1))
+		if (!c || !config_addr_ok)
 		  {
 		    o1 = new_opt6(OPTION6_STATUS_CODE);
 		    put_opt6_short(DHCP6NOTONLINK);
@@ -1668,10 +1703,14 @@ static void mark_config_used(struct dhcp_context *context, struct in6_addr *addr
       context->flags |= CONTEXT_CONF_USED;
 }
 
-/* make sure address not leased to another CLID/IAID */
-static int check_address(struct state *state, struct in6_addr *addr)
+/* check that ipv6 address belongs to config with same mac address as in state or ipv6 address is not leased to another CLID/IAID */
+static int check_address(struct state *state, struct dhcp_config *config, struct in6_addr *addr)
 { 
   struct dhcp_lease *lease;
+
+  if (state->mac_len && config &&
+      config_has_mac(config, state->mac, state->mac_len, state->mac_type))
+    return 1;
 
   if (!(lease = lease6_find_by_addr(addr, 128, 0)))
     return 1;
@@ -1749,7 +1788,7 @@ static int config_valid(struct dhcp_config *config, struct dhcp_context *context
 	  {
 	    setaddr6part(addr, addrpart+i);
 	    
-	    if (check_address(state, addr))
+	    if (check_address(state, config, addr))
 	      return 1;
 	  }
       }
