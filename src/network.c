@@ -847,6 +847,7 @@ static int make_sock(union mysockaddr *addr, int type, int dienow)
 {
   int family = addr->sa.sa_family;
   int fd, rc, opt = 1;
+  int tos = IPTOS_CLASS_CS6;
   
   if ((fd = socket(family, type, 0)) == -1)
     {
@@ -883,6 +884,11 @@ static int make_sock(union mysockaddr *addr, int type, int dienow)
       
       return -1;
     }	
+
+  if (family == AF_INET6)
+	rc = setsockopt(fd, IPPROTO_IPV6, IPV6_TCLASS, &tos, sizeof(tos));
+  else
+	rc = setsockopt(fd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos));
   
   if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1 || !fix_fd(fd))
     goto err;
